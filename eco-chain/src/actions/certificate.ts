@@ -1,160 +1,173 @@
 "use server";
 
+import { z } from "zod";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { db } from "@/db";
 import { transactions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-/**
- * Generate a PDF retirement certificate
- * Called after a successful retire() transaction on-chain
- */
-export async function generateCertificate(params: {
-    txHash: string;
-    retireeName: string;
-    reason: string;
-    tokenId: number;
-    amount: number;
-    projectName: string;
-}) {
-    try {
-        const { txHash, retireeName, reason, tokenId, amount, projectName } = params;
+// ─── Input Validation ───
+const certificateSchema = z.object({
+    txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Invalid transaction hash"),
+    tokenId: z.number().int().nonnegative(),
+    amount: z.number().positive(),
+    projectName: z.string().min(1).max(200),
+    retireeName: z.string().min(1).max(200),
+    reason: z.string().max(500).optional(),
+    walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid wallet address"),
+});
 
-        // ─── Create PDF Document ───
+type CertificateParams = z.infer<typeof certificateSchema>;
+
+/**
+ * Generate a PDF certificate for retired carbon credits.
+ *
+ * TODO (Production): Upload the generated PDF to S3/R2 cloud storage
+ * instead of returning it as a data URI. This avoids DB size bloat.
+ * 1. Upload PDF buffer to S3/R2
+ * 2. Store the CDN URL in `transactions.certificateUrl`
+ * 3. Return the CDN URL to the client
+ */
+export async function generateCertificate(params: CertificateParams) {
+    try {
+        // Validate inputs
+        const parsed = certificateSchema.safeParse(params);
+        if (!parsed.success) {
+            return {
+                success: false,
+                error: "Invalid certificate parameters",
+                details: parsed.error.flatten().fieldErrors,
+            };
+        }
+
+        const { txHash, tokenId, amount, projectName, retireeName, reason, walletAddress } =
+            parsed.data;
+
+        // Sanitize text for PDF embedding (prevent injection)
+        const sanitize = (s: string) =>
+            s.replace(/[^\w\s.,!?@#$%&*()\-=+[\]{};:'"<>/\\|~`]/g, "").trim();
+
+        const safeName = sanitize(retireeName);
+        const safeProject = sanitize(projectName);
+        const safeReason = sanitize(reason || "Carbon offset retirement");
+
+        // Create PDF
         const pdfDoc = await PDFDocument.create();
-        const page = pdfDoc.addPage([842, 595]); // A4 Landscape
+        const page = pdfDoc.addPage([612, 792]); // US Letter
         const { width, height } = page.getSize();
 
-        const titleFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-        const bodyFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        const italicFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+        const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-        // ─── Background ───
+        // Background
         page.drawRectangle({
-            x: 0, y: 0, width, height,
-            color: rgb(0.04, 0.09, 0.07), // Dark green-black
+            x: 0,
+            y: 0,
+            width,
+            height,
+            color: rgb(0.04, 0.06, 0.05),
         });
 
         // Border
         page.drawRectangle({
-            x: 20, y: 20, width: width - 40, height: height - 40,
-            borderColor: rgb(0.2, 0.75, 0.5),
+            x: 20,
+            y: 20,
+            width: width - 40,
+            height: height - 40,
+            borderColor: rgb(0.2, 0.75, 0.45),
             borderWidth: 2,
         });
 
         // Inner border
         page.drawRectangle({
-            x: 30, y: 30, width: width - 60, height: height - 60,
-            borderColor: rgb(0.15, 0.6, 0.4),
+            x: 30,
+            y: 30,
+            width: width - 60,
+            height: height - 60,
+            borderColor: rgb(0.15, 0.55, 0.35),
             borderWidth: 0.5,
         });
 
-        // ─── Header ───
-        const headerY = height - 80;
-        page.drawText("🌿 ECOCHAIN", {
-            x: width / 2 - 100,
-            y: headerY,
-            size: 28,
-            font: titleFont,
-            color: rgb(0.3, 0.85, 0.55),
+        // Title
+        const title = "CERTIFICATE OF CARBON RETIREMENT";
+        page.drawText(title, {
+            x: (width - helveticaBold.widthOfTextAtSize(title, 18)) / 2,
+            y: height - 100,
+            size: 18,
+            font: helveticaBold,
+            color: rgb(0.2, 0.8, 0.5),
         });
 
-        page.drawText("CARBON RETIREMENT CERTIFICATE", {
-            x: width / 2 - 180,
-            y: headerY - 40,
-            size: 20,
-            font: titleFont,
-            color: rgb(0.9, 0.95, 0.9),
-        });
-
-        // ─── Decorative Line ───
-        page.drawLine({
-            start: { x: 60, y: headerY - 60 },
-            end: { x: width - 60, y: headerY - 60 },
-            thickness: 1,
-            color: rgb(0.2, 0.75, 0.5),
-        });
-
-        // ─── Certificate Body ───
-        const bodyY = headerY - 100;
-        const leftMargin = 80;
-
-        page.drawText("This certifies that", {
-            x: width / 2 - 70,
-            y: bodyY,
-            size: 12,
-            font: italicFont,
-            color: rgb(0.7, 0.8, 0.75),
-        });
-
-        page.drawText(retireeName, {
-            x: width / 2 - titleFont.widthOfTextAtSize(retireeName, 24) / 2,
-            y: bodyY - 35,
+        // Leaf icon (text approximation)
+        page.drawText("🌿", {
+            x: width / 2 - 10,
+            y: height - 140,
             size: 24,
-            font: titleFont,
-            color: rgb(0.3, 0.95, 0.6),
+            font: helvetica,
         });
 
-        page.drawText("has permanently retired carbon credits from the blockchain.", {
-            x: width / 2 - 210,
-            y: bodyY - 65,
-            size: 12,
-            font: bodyFont,
-            color: rgb(0.7, 0.8, 0.75),
-        });
+        // Certificate body
+        const lineHeight = 28;
+        let yPos = height - 200;
 
-        // ─── Details ───
-        const detailsY = bodyY - 110;
-        const details = [
-            ["Project:", projectName],
-            ["Token ID:", `#${tokenId}`],
-            ["Amount Retired:", `${amount} tons CO₂`],
-            ["Reason:", reason],
-            ["Transaction:", `${txHash.slice(0, 10)}...${txHash.slice(-8)}`],
-            ["Date:", new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })],
-        ];
-
-        details.forEach(([label, value], i) => {
-            const y = detailsY - i * 28;
-
+        const drawRow = (label: string, value: string) => {
             page.drawText(label, {
-                x: leftMargin + 100,
-                y,
-                size: 11,
-                font: titleFont,
-                color: rgb(0.5, 0.7, 0.6),
+                x: 80,
+                y: yPos,
+                size: 10,
+                font: helvetica,
+                color: rgb(0.5, 0.55, 0.52),
             });
-
             page.drawText(value, {
-                x: leftMargin + 250,
-                y,
+                x: 230,
+                y: yPos,
                 size: 11,
-                font: bodyFont,
-                color: rgb(0.9, 0.95, 0.9),
+                font: helveticaBold,
+                color: rgb(0.85, 0.9, 0.87),
             });
+            yPos -= lineHeight;
+        };
+
+        drawRow("Retiree:", safeName);
+        drawRow("Project:", safeProject);
+        drawRow("Amount:", `${amount} tons CO₂`);
+        drawRow("Token ID:", `#${tokenId}`);
+        drawRow("Reason:", safeReason.slice(0, 60));
+        drawRow("Date:", new Date().toISOString().split("T")[0]);
+        drawRow("Wallet:", `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`);
+
+        yPos -= 20;
+
+        // Transaction hash
+        page.drawText("Transaction Hash:", {
+            x: 80,
+            y: yPos,
+            size: 10,
+            font: helvetica,
+            color: rgb(0.5, 0.55, 0.52),
+        });
+        yPos -= 18;
+        page.drawText(txHash, {
+            x: 80,
+            y: yPos,
+            size: 7,
+            font: helvetica,
+            color: rgb(0.4, 0.7, 0.5),
+        });
+        yPos -= 40;
+
+        // Footer badge
+        const badge = "VERIFIED ON POLYGON • IMMUTABLE • PERMANENT";
+        page.drawText(badge, {
+            x: (width - helvetica.widthOfTextAtSize(badge, 8)) / 2,
+            y: 60,
+            size: 8,
+            font: helvetica,
+            color: rgb(0.3, 0.5, 0.4),
         });
 
-        // ─── Footer ───
-        page.drawLine({
-            start: { x: 60, y: 70 },
-            end: { x: width - 60, y: 70 },
-            thickness: 0.5,
-            color: rgb(0.2, 0.6, 0.4),
-        });
-
-        page.drawText("Verified on Polygon Blockchain • EcoChain Carbon Credit Marketplace", {
-            x: width / 2 - 200,
-            y: 50,
-            size: 9,
-            font: italicFont,
-            color: rgb(0.4, 0.6, 0.5),
-        });
-
-        // ─── Generate PDF bytes ───
+        // Serialize to base64
         const pdfBytes = await pdfDoc.save();
-
-        // In production, upload to S3/R2
-        // For now, return a data URI and store in DB
         const base64 = Buffer.from(pdfBytes).toString("base64");
         const certificateUrl = `data:application/pdf;base64,${base64}`;
 
@@ -164,13 +177,9 @@ export async function generateCertificate(params: {
             .set({ certificateUrl })
             .where(eq(transactions.txHash, txHash));
 
-        return {
-            success: true,
-            certificateUrl,
-            message: "Certificate generated successfully",
-        };
+        return { success: true, certificateUrl };
     } catch (error) {
-        console.error("Certificate generation error:", error);
+        console.error("[generateCertificate] Error:", error);
         return { success: false, error: "Failed to generate certificate" };
     }
 }

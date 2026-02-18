@@ -1,21 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount } from "wagmi";
+import { useState, useCallback, useRef } from "react";
+import { useAccount, useSignMessage } from "wagmi";
+import dynamic from "next/dynamic";
 import {
     BarChart3,
     PlusCircle,
     Wallet,
     CheckCircle2,
-    Clock,
-    XCircle,
     TreePine,
     TrendingUp,
     Flame,
     Package,
+    Loader2,
+    MapPin,
+    X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,63 +33,106 @@ import {
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { submitProject } from "@/actions/projects";
+import { buildProjectSubmissionMessage } from "@/lib/auth";
 
-// Mock portfolio data
-const portfolio = {
-    totalCredits: 2450,
-    totalRetired: 580,
-    totalValue: 68.5,
-    projectsOwned: 4,
-};
+// Dynamic import for map picker (SSR incompatible)
+const MapPickerComponent = dynamic(() => import("@/components/map-picker"), {
+    ssr: false,
+    loading: () => (
+        <div className="h-48 rounded-lg bg-[#060a08] border border-emerald-900/30 flex items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-emerald-400" />
+        </div>
+    ),
+});
 
-const myCredits = [
-    { tokenId: 1, projectName: "Amazon Rainforest Conservation", balance: 1200, value: 30.0, type: "Conservation" },
-    { tokenId: 2, projectName: "Saharan Solar Farm Grid", balance: 500, value: 9.0, type: "Renewable" },
-    { tokenId: 4, projectName: "Borneo Mangrove Restoration", balance: 450, value: 14.4, type: "Reforestation" },
-    { tokenId: 5, projectName: "Patagonia Wind Energy", balance: 300, value: 6.3, type: "Renewable" },
+interface DemoCredit {
+    tokenId: number;
+    projectName: string;
+    projectType: "reforestation" | "conservation" | "renewable" | "industrial";
+    balance: number;
+    pricePerTon: number;
+}
+
+interface DemoProject {
+    id: number;
+    name: string;
+    type: "reforestation" | "conservation" | "renewable" | "industrial";
+    country: string;
+    status: "pending" | "verified" | "rejected";
+    submittedAt: string;
+}
+
+const DEMO_CREDITS: DemoCredit[] = [
+    {
+        tokenId: 1,
+        projectName: "Amazon Rainforest Conservation",
+        projectType: "conservation",
+        balance: 120,
+        pricePerTon: 2.4,
+    },
+    {
+        tokenId: 3,
+        projectName: "Kenya Wind Corridor",
+        projectType: "renewable",
+        balance: 75,
+        pricePerTon: 1.85,
+    },
+    {
+        tokenId: 4,
+        projectName: "Nordic Carbon Capture Hub",
+        projectType: "industrial",
+        balance: 28,
+        pricePerTon: 3.75,
+    },
 ];
 
-const myProjects = [
+const DEMO_PROJECTS: DemoProject[] = [
     {
-        id: 1,
-        name: "Mumbai Urban Green Corridor",
-        status: "verified" as const,
-        credits: 500,
-        type: "Urban Greening",
-        submitted: "2025-12-15",
+        id: 101,
+        name: "Borneo Mangrove Restoration",
+        type: "reforestation",
+        country: "Indonesia",
+        status: "verified",
+        submittedAt: "2026-01-12",
     },
     {
-        id: 2,
-        name: "Kerala Mangrove Restoration",
-        status: "pending" as const,
-        credits: 0,
-        type: "Reforestation",
-        submitted: "2026-01-20",
+        id: 102,
+        name: "Atacama Solar Storage",
+        type: "renewable",
+        country: "Chile",
+        status: "pending",
+        submittedAt: "2026-02-02",
     },
     {
-        id: 3,
-        name: "Rajasthan Solar Initiative",
-        status: "rejected" as const,
-        credits: 0,
-        type: "Renewable Energy",
-        submitted: "2025-11-05",
+        id: 103,
+        name: "Alpine Carbon Removal Pilot",
+        type: "industrial",
+        country: "Switzerland",
+        status: "rejected",
+        submittedAt: "2026-01-20",
     },
 ];
 
-const statusConfig = {
-    verified: { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
-    pending: { icon: Clock, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
-    rejected: { icon: XCircle, color: "text-red-400", bg: "bg-red-500/10 border-red-500/20" },
-};
+function parseCoordinate(value: string): number | undefined {
+    if (!value.trim()) return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
 
 export default function DashboardPage() {
     const { address, isConnected } = useAccount();
+    const { signMessageAsync, isPending: isSigning } = useSignMessage();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const submitLockRef = useRef(false); // Double-submit prevention
+
     const [projectForm, setProjectForm] = useState({
         name: "",
         description: "",
@@ -98,13 +143,153 @@ export default function DashboardPage() {
         apiEndpoint: "",
     });
 
-    const handleSubmitProject = () => {
-        if (!projectForm.name || !projectForm.type) {
-            toast.error("Please fill in required fields");
+    // Field-level errors
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    const demoRetired = 64;
+    const totalCredits = DEMO_CREDITS.reduce((sum, item) => sum + item.balance, 0);
+    const portfolioValue = DEMO_CREDITS.reduce(
+        (sum, item) => sum + item.balance * item.pricePerTon,
+        0
+    );
+
+    const updateField = useCallback(
+        (field: string, value: string) => {
+            setProjectForm((prev) => ({ ...prev, [field]: value }));
+            // Clear field error on change
+            if (fieldErrors[field]) {
+                setFieldErrors((prev) => {
+                    const next = { ...prev };
+                    delete next[field];
+                    return next;
+                });
+            }
+        },
+        [fieldErrors]
+    );
+
+    // Map click handler
+    const handleMapClick = useCallback(
+        (lat: number, lng: number) => {
+            setProjectForm((prev) => ({
+                ...prev,
+                lat: lat.toFixed(4),
+                lng: lng.toFixed(4),
+            }));
+            // Clear coordinate errors
+            setFieldErrors((prev) => {
+                const next = { ...prev };
+                delete next.lat;
+                delete next.lng;
+                return next;
+            });
+        },
+        []
+    );
+
+    // Client-side validation
+    const validate = (): boolean => {
+        const errors: Record<string, string> = {};
+
+        if (!projectForm.name || projectForm.name.trim().length < 3) {
+            errors.name = "Name must be at least 3 characters";
+        }
+        if (!projectForm.type) {
+            errors.type = "Please select a project type";
+        }
+        if (projectForm.apiEndpoint) {
+            try {
+                const url = new URL(projectForm.apiEndpoint);
+                if (url.protocol !== "https:") {
+                    errors.apiEndpoint = "Must be an HTTPS URL";
+                }
+            } catch {
+                errors.apiEndpoint = "Invalid URL format";
+            }
+        }
+
+        setFieldErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
+    const handleSubmitProject = async () => {
+        // Double-submit prevention
+        if (submitLockRef.current || isSubmitting || isSigning) return;
+        if (!validate()) return;
+
+        if (!address) {
+            toast.error("Please connect your wallet first");
             return;
         }
-        toast.success("Project submitted successfully! Awaiting verification.");
-        setProjectForm({ name: "", description: "", type: "", country: "", lat: "", lng: "", apiEndpoint: "" });
+
+        submitLockRef.current = true;
+        setIsSubmitting(true);
+
+        try {
+            const timestamp = Date.now();
+            const message = buildProjectSubmissionMessage(address, timestamp);
+            const signature = await signMessageAsync({ message });
+
+            const latValue = parseCoordinate(projectForm.lat);
+            const lngValue = parseCoordinate(projectForm.lng);
+
+            const result = await submitProject({
+                walletAddress: address,
+                name: projectForm.name,
+                description: projectForm.description || undefined,
+                type: projectForm.type as
+                    | "reforestation"
+                    | "conservation"
+                    | "renewable"
+                    | "industrial",
+                country: projectForm.country || undefined,
+                lat: latValue,
+                lng: lngValue,
+                apiEndpoint: projectForm.apiEndpoint || undefined,
+                signature,
+                timestamp,
+            });
+
+            if (result.success) {
+                toast.success(result.message || "Project submitted!");
+                setProjectForm({
+                    name: "",
+                    description: "",
+                    type: "",
+                    country: "",
+                    lat: "",
+                    lng: "",
+                    apiEndpoint: "",
+                });
+                setFieldErrors({});
+                setDialogOpen(false);
+            } else {
+                // Show field-level errors from server
+                if (
+                    result.details &&
+                    typeof result.details === "object"
+                ) {
+                    const serverErrors: Record<string, string> = {};
+                    for (const [key, value] of Object.entries(
+                        result.details as Record<string, string[]>
+                    )) {
+                        serverErrors[key] = Array.isArray(value)
+                            ? value[0]
+                            : String(value);
+                    }
+                    setFieldErrors(serverErrors);
+                }
+                toast.error(result.error || "Failed to submit project");
+            }
+        } catch (error) {
+            if ((error as Error)?.name === "UserRejectedRequestError") {
+                toast.error("Signature request was rejected");
+            } else {
+                toast.error("Network or signature error — please try again");
+            }
+        } finally {
+            setIsSubmitting(false);
+            submitLockRef.current = false;
+        }
     };
 
     if (!isConnected) {
@@ -115,8 +300,13 @@ export default function DashboardPage() {
                         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20">
                             <Wallet className="h-8 w-8 text-emerald-400" />
                         </div>
-                        <h2 className="text-xl font-bold text-zinc-100">Connect Your Wallet</h2>
-                        <p className="text-sm text-zinc-500">Connect your wallet to view your dashboard, manage credits, and submit projects.</p>
+                        <h2 className="text-xl font-bold text-zinc-100">
+                            Connect Your Wallet
+                        </h2>
+                        <p className="text-sm text-zinc-500">
+                            Connect your wallet to view your dashboard, manage
+                            credits, and submit projects.
+                        </p>
                     </CardContent>
                 </Card>
             </div>
@@ -133,14 +323,16 @@ export default function DashboardPage() {
                             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-green-600">
                                 <BarChart3 className="h-5 w-5 text-white" />
                             </div>
-                            <h1 className="text-2xl font-bold text-zinc-100">Dashboard</h1>
+                            <h1 className="text-2xl font-bold text-zinc-100">
+                                Dashboard
+                            </h1>
                         </div>
                         <p className="text-sm text-zinc-500 font-mono">
                             {address?.slice(0, 6)}...{address?.slice(-4)}
                         </p>
                     </div>
 
-                    <Dialog>
+                    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                         <DialogTrigger asChild>
                             <Button className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white">
                                 <PlusCircle className="h-4 w-4 mr-2" />
@@ -149,90 +341,246 @@ export default function DashboardPage() {
                         </DialogTrigger>
                         <DialogContent className="bg-[#0a1210] border-emerald-900/30 max-w-lg max-h-[90vh] overflow-y-auto">
                             <DialogHeader>
-                                <DialogTitle className="text-zinc-100">Submit New Carbon Project</DialogTitle>
+                                <DialogTitle className="text-zinc-100">
+                                    Submit New Carbon Project
+                                </DialogTitle>
+                                <DialogDescription className="text-zinc-500">
+                                    Enter project details and location to submit for verification.
+                                </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4 pt-4">
+                                {/* Name */}
                                 <div className="space-y-2">
-                                    <Label className="text-zinc-300">Project Name *</Label>
+                                    <Label className="text-zinc-300">
+                                        Project Name{" "}
+                                        <span className="text-red-400">*</span>
+                                    </Label>
                                     <Input
                                         value={projectForm.name}
-                                        onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
+                                        onChange={(e) =>
+                                            updateField("name", e.target.value)
+                                        }
                                         placeholder="e.g. Amazon Reforestation Initiative"
-                                        className="bg-[#060a08] border-emerald-900/30"
+                                        className={`bg-[#060a08] border-emerald-900/30 ${fieldErrors.name
+                                                ? "border-red-500/50"
+                                                : ""
+                                            }`}
+                                        maxLength={200}
+                                        disabled={isSubmitting}
                                     />
+                                    {fieldErrors.name && (
+                                        <p className="text-xs text-red-400">
+                                            {fieldErrors.name}
+                                        </p>
+                                    )}
                                 </div>
+
+                                {/* Description */}
                                 <div className="space-y-2">
-                                    <Label className="text-zinc-300">Description</Label>
+                                    <Label className="text-zinc-300">
+                                        Description
+                                    </Label>
                                     <Textarea
                                         value={projectForm.description}
-                                        onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
+                                        onChange={(e) =>
+                                            updateField(
+                                                "description",
+                                                e.target.value
+                                            )
+                                        }
                                         placeholder="Describe the project's carbon offset methodology..."
                                         className="bg-[#060a08] border-emerald-900/30 resize-none"
                                         rows={3}
+                                        maxLength={2000}
+                                        disabled={isSubmitting}
                                     />
+                                    <p className="text-xs text-zinc-600 text-right">
+                                        {projectForm.description.length}/2000
+                                    </p>
                                 </div>
+
+                                {/* Type + Country */}
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-2">
-                                        <Label className="text-zinc-300">Project Type *</Label>
+                                        <Label className="text-zinc-300">
+                                            Project Type{" "}
+                                            <span className="text-red-400">
+                                                *
+                                            </span>
+                                        </Label>
                                         <Select
                                             value={projectForm.type}
-                                            onValueChange={(v) => setProjectForm({ ...projectForm, type: v })}
+                                            onValueChange={(v) =>
+                                                updateField("type", v)
+                                            }
+                                            disabled={isSubmitting}
                                         >
-                                            <SelectTrigger className="bg-[#060a08] border-emerald-900/30">
+                                            <SelectTrigger
+                                                className={`bg-[#060a08] border-emerald-900/30 ${fieldErrors.type
+                                                        ? "border-red-500/50"
+                                                        : ""
+                                                    }`}
+                                            >
                                                 <SelectValue placeholder="Select type" />
                                             </SelectTrigger>
                                             <SelectContent className="bg-[#0a1210] border-emerald-900/30">
-                                                <SelectItem value="reforestation">Reforestation</SelectItem>
-                                                <SelectItem value="conservation">Conservation</SelectItem>
-                                                <SelectItem value="renewable">Renewable Energy</SelectItem>
-                                                <SelectItem value="industrial">Industrial Capture</SelectItem>
+                                                <SelectItem value="reforestation">
+                                                    🌲 Reforestation
+                                                </SelectItem>
+                                                <SelectItem value="conservation">
+                                                    🌿 Conservation
+                                                </SelectItem>
+                                                <SelectItem value="renewable">
+                                                    💨 Renewable Energy
+                                                </SelectItem>
+                                                <SelectItem value="industrial">
+                                                    🏭 Industrial Capture
+                                                </SelectItem>
                                             </SelectContent>
                                         </Select>
+                                        {fieldErrors.type && (
+                                            <p className="text-xs text-red-400">
+                                                {fieldErrors.type}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="space-y-2">
-                                        <Label className="text-zinc-300">Country</Label>
+                                        <Label className="text-zinc-300">
+                                            Country
+                                        </Label>
                                         <Input
                                             value={projectForm.country}
-                                            onChange={(e) => setProjectForm({ ...projectForm, country: e.target.value })}
+                                            onChange={(e) =>
+                                                updateField(
+                                                    "country",
+                                                    e.target.value
+                                                )
+                                            }
                                             placeholder="e.g. Brazil"
                                             className="bg-[#060a08] border-emerald-900/30"
+                                            maxLength={100}
+                                            disabled={isSubmitting}
                                         />
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-2">
-                                        <Label className="text-zinc-300">Latitude</Label>
-                                        <Input
-                                            value={projectForm.lat}
-                                            onChange={(e) => setProjectForm({ ...projectForm, lat: e.target.value })}
-                                            placeholder="-3.4653"
-                                            className="bg-[#060a08] border-emerald-900/30"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-zinc-300">Longitude</Label>
-                                        <Input
-                                            value={projectForm.lng}
-                                            onChange={(e) => setProjectForm({ ...projectForm, lng: e.target.value })}
-                                            placeholder="-62.2159"
-                                            className="bg-[#060a08] border-emerald-900/30"
-                                        />
-                                    </div>
-                                </div>
+
+                                {/* Map Picker */}
                                 <div className="space-y-2">
-                                    <Label className="text-zinc-300">IoT/API Endpoint (optional)</Label>
+                                    <Label className="text-zinc-300 flex items-center gap-2">
+                                        <MapPin className="h-3.5 w-3.5" />
+                                        Project Location
+                                    </Label>
+                                    <p className="text-xs text-zinc-600">
+                                        Click on the map to set coordinates, or
+                                        enter manually below.
+                                    </p>
+                                    <MapPickerComponent
+                                        lat={parseCoordinate(projectForm.lat)}
+                                        lng={parseCoordinate(projectForm.lng)}
+                                        onSelect={handleMapClick}
+                                    />
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-zinc-500">
+                                                Latitude
+                                            </Label>
+                                            <Input
+                                                value={projectForm.lat}
+                                                onChange={(e) =>
+                                                    updateField(
+                                                        "lat",
+                                                        e.target.value
+                                                    )
+                                                }
+                                                placeholder="-3.4653"
+                                                className="bg-[#060a08] border-emerald-900/30 text-sm"
+                                                disabled={isSubmitting}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-zinc-500">
+                                                Longitude
+                                            </Label>
+                                            <Input
+                                                value={projectForm.lng}
+                                                onChange={(e) =>
+                                                    updateField(
+                                                        "lng",
+                                                        e.target.value
+                                                    )
+                                                }
+                                                placeholder="-62.2159"
+                                                className="bg-[#060a08] border-emerald-900/30 text-sm"
+                                                disabled={isSubmitting}
+                                            />
+                                        </div>
+                                    </div>
+                                    {projectForm.lat && projectForm.lng && (
+                                        <div className="flex items-center gap-2 text-xs text-emerald-400">
+                                            <CheckCircle2 className="h-3 w-3" />
+                                            Location set: {projectForm.lat},{" "}
+                                            {projectForm.lng}
+                                            <button
+                                                onClick={() => {
+                                                    updateField("lat", "");
+                                                    updateField("lng", "");
+                                                }}
+                                                className="ml-auto text-zinc-500 hover:text-zinc-300"
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* IoT Endpoint */}
+                                <div className="space-y-2">
+                                    <Label className="text-zinc-300">
+                                        IoT/API Endpoint{" "}
+                                        <span className="text-zinc-600">
+                                            (optional)
+                                        </span>
+                                    </Label>
                                     <Input
                                         value={projectForm.apiEndpoint}
-                                        onChange={(e) => setProjectForm({ ...projectForm, apiEndpoint: e.target.value })}
+                                        onChange={(e) =>
+                                            updateField(
+                                                "apiEndpoint",
+                                                e.target.value
+                                            )
+                                        }
                                         placeholder="https://api.example.com/emissions"
-                                        className="bg-[#060a08] border-emerald-900/30"
+                                        className={`bg-[#060a08] border-emerald-900/30 ${fieldErrors.apiEndpoint
+                                                ? "border-red-500/50"
+                                                : ""
+                                            }`}
+                                        disabled={isSubmitting}
                                     />
+                                    {fieldErrors.apiEndpoint && (
+                                        <p className="text-xs text-red-400">
+                                            {fieldErrors.apiEndpoint}
+                                        </p>
+                                    )}
+                                    <p className="text-xs text-zinc-600">
+                                        Must be HTTPS. Internal/private URLs are
+                                        blocked.
+                                    </p>
                                 </div>
+
+                                {/* Submit */}
                                 <Button
                                     onClick={handleSubmitProject}
+                                    disabled={isSubmitting || isSigning}
                                     className="w-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white"
                                 >
-                                    Submit for Verification
+                                    {isSubmitting || isSigning ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            {isSigning ? "Awaiting signature..." : "Submitting..."}
+                                        </>
+                                    ) : (
+                                        "Submit for Verification"
+                                    )}
                                 </Button>
                             </div>
                         </DialogContent>
@@ -242,19 +590,48 @@ export default function DashboardPage() {
                 {/* ─── Stats Grid ─── */}
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
                     {[
-                        { label: "Total Credits", value: portfolio.totalCredits.toLocaleString(), suffix: "tons", icon: Package, color: "text-emerald-400" },
-                        { label: "Total Retired", value: portfolio.totalRetired.toLocaleString(), suffix: "tons", icon: Flame, color: "text-orange-400" },
-                        { label: "Portfolio Value", value: `${portfolio.totalValue} MATIC`, suffix: "", icon: TrendingUp, color: "text-cyan-400" },
-                        { label: "Projects Owned", value: portfolio.projectsOwned.toString(), suffix: "credits", icon: TreePine, color: "text-lime-400" },
+                        {
+                            label: "Total Credits",
+                            value: `${totalCredits.toLocaleString()} t`,
+                            icon: Package,
+                            color: "text-emerald-400",
+                        },
+                        {
+                            label: "Total Retired",
+                            value: `${demoRetired.toLocaleString()} t`,
+                            icon: Flame,
+                            color: "text-orange-400",
+                        },
+                        {
+                            label: "Portfolio Value",
+                            value: `${portfolioValue.toFixed(2)} MATIC`,
+                            icon: TrendingUp,
+                            color: "text-cyan-400",
+                        },
+                        {
+                            label: "Projects",
+                            value: DEMO_PROJECTS.length.toString(),
+                            icon: TreePine,
+                            color: "text-lime-400",
+                        },
                     ].map((stat) => (
-                        <Card key={stat.label} className="border-emerald-900/20 bg-[#0a1210]/80">
+                        <Card
+                            key={stat.label}
+                            className="border-emerald-900/20 bg-[#0a1210]/80"
+                        >
                             <CardContent className="flex items-center gap-4 pt-6">
                                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                                    <stat.icon
+                                        className={`h-6 w-6 ${stat.color}`}
+                                    />
                                 </div>
                                 <div>
-                                    <p className="text-xs text-zinc-500">{stat.label}</p>
-                                    <p className="text-xl font-bold text-zinc-100">{stat.value}</p>
+                                    <p className="text-xs text-zinc-500">
+                                        {stat.label}
+                                    </p>
+                                    <p className="text-xl font-bold text-zinc-100">
+                                        {stat.value}
+                                    </p>
                                 </div>
                             </CardContent>
                         </Card>
@@ -264,73 +641,120 @@ export default function DashboardPage() {
                 {/* ─── Tabs ─── */}
                 <Tabs defaultValue="credits" className="space-y-6">
                     <TabsList className="bg-[#0a1210] border border-emerald-900/20">
-                        <TabsTrigger value="credits" className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400">
+                        <TabsTrigger
+                            value="credits"
+                            className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400"
+                        >
                             My Credits
                         </TabsTrigger>
-                        <TabsTrigger value="projects" className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400">
+                        <TabsTrigger
+                            value="projects"
+                            className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400"
+                        >
                             My Projects
                         </TabsTrigger>
                     </TabsList>
 
-                    {/* Credits Tab */}
                     <TabsContent value="credits" className="space-y-4">
-                        {myCredits.map((credit) => (
-                            <Card key={credit.tokenId} className="border-emerald-900/20 bg-[#0a1210]/80 hover:border-emerald-500/20 transition-colors">
-                                <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-6">
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                                            <TreePine className="h-6 w-6 text-emerald-400" />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-semibold text-zinc-100">{credit.projectName}</h3>
-                                            <div className="flex items-center gap-3 mt-1 text-sm text-zinc-500">
-                                                <span>Token #{credit.tokenId}</span>
-                                                <Separator orientation="vertical" className="h-3 bg-emerald-900/30" />
-                                                <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 border-0 text-xs">
-                                                    {credit.type}
+                        {DEMO_CREDITS.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
+                                <Package className="h-12 w-12 mb-3 text-zinc-700" />
+                                <p className="text-sm">
+                                    Purchase credits from the marketplace to see
+                                    them here.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid gap-4 md:grid-cols-2">
+                                {DEMO_CREDITS.map((credit) => (
+                                    <Card
+                                        key={credit.tokenId}
+                                        className="border-emerald-900/20 bg-[#0a1210]/80"
+                                    >
+                                        <CardContent className="pt-6">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-semibold text-zinc-100">
+                                                        {credit.projectName}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-zinc-500">
+                                                        Token #{credit.tokenId}
+                                                    </p>
+                                                </div>
+                                                <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 capitalize">
+                                                    {credit.projectType}
                                                 </Badge>
                                             </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-6 text-right">
-                                        <div>
-                                            <p className="text-xs text-zinc-500">Balance</p>
-                                            <p className="text-lg font-bold text-zinc-100">{credit.balance.toLocaleString()} t</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-zinc-500">Value</p>
-                                            <p className="text-lg font-bold text-emerald-400">{credit.value} MATIC</p>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+                                            <div className="mt-4 flex items-center justify-between text-sm">
+                                                <span className="text-zinc-500">
+                                                    Balance
+                                                </span>
+                                                <span className="font-semibold text-zinc-100">
+                                                    {credit.balance} tCO2
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 flex items-center justify-between text-sm">
+                                                <span className="text-zinc-500">
+                                                    Est. Value
+                                                </span>
+                                                <span className="font-semibold text-emerald-400">
+                                                    {(credit.balance * credit.pricePerTon).toFixed(2)} MATIC
+                                                </span>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
                     </TabsContent>
 
-                    {/* Projects Tab */}
                     <TabsContent value="projects" className="space-y-4">
-                        {myProjects.map((project) => {
-                            const status = statusConfig[project.status];
-                            const StatusIcon = status.icon;
-                            return (
-                                <Card key={project.id} className="border-emerald-900/20 bg-[#0a1210]/80">
-                                    <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-6">
-                                        <div>
-                                            <h3 className="font-semibold text-zinc-100">{project.name}</h3>
-                                            <div className="flex items-center gap-3 mt-1 text-sm text-zinc-500">
-                                                <span>{project.type}</span>
-                                                <Separator orientation="vertical" className="h-3 bg-emerald-900/30" />
-                                                <span>Submitted {project.submitted}</span>
+                        {DEMO_PROJECTS.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
+                                <TreePine className="h-12 w-12 mb-3 text-zinc-700" />
+                                <p className="text-sm">
+                                    Submit a project to see it here. Click
+                                    &quot;Submit Project&quot; above.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid gap-4">
+                                {DEMO_PROJECTS.map((project) => (
+                                    <Card
+                                        key={project.id}
+                                        className="border-emerald-900/20 bg-[#0a1210]/80"
+                                    >
+                                        <CardContent className="pt-6">
+                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-semibold text-zinc-100">
+                                                        {project.name}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-zinc-500">
+                                                        {project.country} · Submitted {project.submittedAt}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 capitalize">
+                                                        {project.type}
+                                                    </Badge>
+                                                    <Badge
+                                                        className={`capitalize border ${project.status === "verified"
+                                                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                                : project.status === "pending"
+                                                                    ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                                                                    : "bg-red-500/10 text-red-400 border-red-500/20"
+                                                            }`}
+                                                    >
+                                                        {project.status}
+                                                    </Badge>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <Badge className={`${status.bg} ${status.color} border`}>
-                                            <StatusIcon className="h-3 w-3 mr-1" />
-                                            {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
-                                        </Badge>
-                                    </CardContent>
-                                </Card>
-                            );
-                        })}
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
                     </TabsContent>
                 </Tabs>
             </div>

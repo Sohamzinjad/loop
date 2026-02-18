@@ -4,84 +4,62 @@ import { useState } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import {
     Flame,
-    Download,
-    CheckCircle2,
     Wallet,
-    FileText,
-    TreePine,
+    Send,
+    CheckCircle2,
     Loader2,
+    AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { ECOCREDITS_ABI } from "@/lib/contracts";
-import { ECOCREDITS_ADDRESS } from "@/lib/wagmi";
+import { ECOCREDITS_ADDRESS, areContractsConfigured } from "@/lib/wagmi";
 import { generateCertificate } from "@/actions/certificate";
 
-// Mock owned credits
-const ownedCredits = [
-    { tokenId: 1, projectName: "Amazon Rainforest Conservation", balance: 1200 },
-    { tokenId: 2, projectName: "Saharan Solar Farm Grid", balance: 500 },
-    { tokenId: 4, projectName: "Borneo Mangrove Restoration", balance: 450 },
-    { tokenId: 5, projectName: "Patagonia Wind Energy", balance: 300 },
-];
-
-// Mock retirement history
-const retirementHistory = [
-    {
-        txHash: "0xabc123...def456",
-        projectName: "Amazon Rainforest Conservation",
-        amount: 200,
-        reason: "Q4 2025 Emissions Offset",
-        date: "2025-12-20",
-        certificateUrl: "#",
-    },
-    {
-        txHash: "0x789abc...123def",
-        projectName: "Saharan Solar Farm Grid",
-        amount: 380,
-        reason: "Annual Carbon Neutrality Goal",
-        date: "2026-01-15",
-        certificateUrl: "#",
-    },
-];
+interface OwnedCredit {
+    tokenId: number;
+    projectName: string;
+    balance: number;
+    projectType: string;
+}
 
 export default function RetirePage() {
     const { address, isConnected } = useAccount();
-    const [selectedToken, setSelectedToken] = useState("");
-    const [amount, setAmount] = useState("");
+    const contractsReady = areContractsConfigured();
+
+    const [selectedCredit, setSelectedCredit] = useState<OwnedCredit | null>(null);
+    const [retireAmount, setRetireAmount] = useState("1");
     const [retireeName, setRetireeName] = useState("");
-    const [reason, setReason] = useState("");
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [certificate, setCertificate] = useState<string | null>(null);
+    const [retireReason, setRetireReason] = useState("");
+    const [isGeneratingCert, setIsGeneratingCert] = useState(false);
+    const [ownedCredits] = useState<OwnedCredit[]>([]);
 
     const { writeContract, data: txHash } = useWriteContract();
-    const { isLoading: isTxPending, isSuccess: isTxSuccess } = useWaitForTransactionReceipt({
-        hash: txHash,
-    });
+    const {
+        isLoading: isTxPending,
+        isSuccess: isTxSuccess,
+        data: txReceipt,
+    } = useWaitForTransactionReceipt({ hash: txHash });
 
-    const selectedCredit = ownedCredits.find((c) => c.tokenId.toString() === selectedToken);
-
-    const handleRetire = async () => {
-        if (!selectedToken || !amount || !retireeName || !reason) {
-            toast.error("Please fill in all fields");
+    const handleRetire = () => {
+        if (!selectedCredit || !retireeName.trim()) {
+            toast.error("Select a credit and enter your name");
             return;
         }
 
-        const qty = parseInt(amount);
-        if (!qty || qty <= 0 || (selectedCredit && qty > selectedCredit.balance)) {
+        if (!contractsReady) {
+            toast.error("Contracts not deployed yet");
+            return;
+        }
+
+        const amount = parseInt(retireAmount);
+        if (!amount || amount <= 0 || amount > selectedCredit.balance) {
             toast.error("Invalid amount");
             return;
         }
@@ -91,27 +69,43 @@ export default function RetirePage() {
                 address: ECOCREDITS_ADDRESS,
                 abi: ECOCREDITS_ABI,
                 functionName: "retire",
-                args: [BigInt(selectedToken), BigInt(qty), retireeName, reason],
+                args: [
+                    BigInt(selectedCredit.tokenId),
+                    BigInt(amount),
+                    retireeName.trim(),
+                    retireReason.trim(),
+                ],
             },
             {
                 onSuccess: async (hash) => {
                     toast.success("Credits retired on-chain! Generating certificate...");
 
-                    setIsGenerating(true);
-                    const result = await generateCertificate({
-                        txHash: hash,
-                        retireeName,
-                        reason,
-                        tokenId: parseInt(selectedToken),
-                        amount: qty,
-                        projectName: selectedCredit?.projectName || "Unknown Project",
-                    });
+                    // Generate certificate
+                    setIsGeneratingCert(true);
+                    try {
+                        const cert = await generateCertificate({
+                            txHash: hash,
+                            tokenId: selectedCredit.tokenId,
+                            amount,
+                            projectName: selectedCredit.projectName,
+                            retireeName: retireeName.trim(),
+                            reason: retireReason.trim(),
+                            walletAddress: address || "",
+                        });
 
-                    if (result.success && result.certificateUrl) {
-                        setCertificate(result.certificateUrl);
-                        toast.success("Certificate generated!");
+                        if (cert.success && cert.certificateUrl) {
+                            toast.success("Certificate generated!");
+                            // Open certificate in a new tab
+                            const link = document.createElement("a");
+                            link.href = cert.certificateUrl;
+                            link.download = `certificate-${hash.slice(0, 8)}.pdf`;
+                            link.click();
+                        }
+                    } catch {
+                        toast.error("Certificate generation failed");
+                    } finally {
+                        setIsGeneratingCert(false);
                     }
-                    setIsGenerating(false);
                 },
                 onError: (error) => {
                     toast.error(error.message.slice(0, 100));
@@ -125,11 +119,16 @@ export default function RetirePage() {
             <div className="min-h-screen flex items-center justify-center bg-grid">
                 <Card className="max-w-md w-full border-emerald-900/20 bg-[#0a1210]/80">
                     <CardContent className="flex flex-col items-center gap-4 pt-8 pb-8 text-center">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500/10 border border-orange-500/20">
-                            <Wallet className="h-8 w-8 text-orange-400" />
+                        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                            <Wallet className="h-8 w-8 text-emerald-400" />
                         </div>
-                        <h2 className="text-xl font-bold text-zinc-100">Connect Your Wallet</h2>
-                        <p className="text-sm text-zinc-500">Connect to retire carbon credits and generate certificates.</p>
+                        <h2 className="text-xl font-bold text-zinc-100">
+                            Connect Your Wallet
+                        </h2>
+                        <p className="text-sm text-zinc-500">
+                            Connect your wallet to retire carbon credits and
+                            receive certificates of impact.
+                        </p>
                     </CardContent>
                 </Card>
             </div>
@@ -138,166 +137,227 @@ export default function RetirePage() {
 
     return (
         <div className="min-h-screen bg-grid">
-            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
                 {/* ─── Header ─── */}
-                <div className="flex items-center gap-3 mb-8">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-red-600">
-                        <Flame className="h-5 w-5 text-white" />
+                <div className="mb-8">
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-red-600">
+                            <Flame className="h-5 w-5 text-white" />
+                        </div>
+                        <h1 className="text-2xl font-bold text-zinc-100">
+                            Retire Credits
+                        </h1>
                     </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-zinc-100">Retire Credits</h1>
-                        <p className="text-sm text-zinc-500">Permanently retire credits to offset your carbon footprint.</p>
-                    </div>
+                    <p className="text-zinc-500 text-sm">
+                        Permanently retire carbon credits to offset emissions and receive
+                        a verifiable certificate.
+                    </p>
                 </div>
 
                 <div className="grid gap-8 lg:grid-cols-5">
-                    {/* ─── Retire Form ─── */}
-                    <div className="lg:col-span-2">
-                        <Card className="border-emerald-900/20 bg-[#0a1210]/80 glow-green">
+                    {/* ─── Left: Select Credits ─── */}
+                    <div className="lg:col-span-2 space-y-4">
+                        <h3 className="text-sm font-medium text-zinc-400">
+                            Select Credits to Retire
+                        </h3>
+
+                        {ownedCredits.length === 0 ? (
+                            <Card className="border-emerald-900/20 bg-[#0a1210]/80">
+                                <CardContent className="flex flex-col items-center py-8 text-center">
+                                    <AlertCircle className="h-10 w-10 text-zinc-700 mb-3" />
+                                    <p className="text-sm text-zinc-500">
+                                        You don&apos;t own any carbon credits yet.
+                                    </p>
+                                    <p className="text-xs text-zinc-600 mt-1">
+                                        Purchase credits from the marketplace first.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            ownedCredits.map((credit) => (
+                                <Card
+                                    key={credit.tokenId}
+                                    className={`cursor-pointer border transition-all duration-200 ${selectedCredit?.tokenId === credit.tokenId
+                                            ? "border-emerald-500/50 bg-emerald-500/5"
+                                            : "border-emerald-900/20 bg-[#0a1210]/80 hover:border-emerald-500/30"
+                                        }`}
+                                    onClick={() => setSelectedCredit(credit)}
+                                >
+                                    <CardContent className="flex items-center justify-between pt-6">
+                                        <div>
+                                            <p className="font-medium text-zinc-100 text-sm">
+                                                {credit.projectName}
+                                            </p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <Badge
+                                                    variant="secondary"
+                                                    className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                >
+                                                    {credit.projectType}
+                                                </Badge>
+                                                <span className="text-xs text-zinc-500">
+                                                    Token #{credit.tokenId}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-lg font-bold text-zinc-100">
+                                                {credit.balance}
+                                            </p>
+                                            <p className="text-xs text-zinc-500">
+                                                available
+                                            </p>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))
+                        )}
+                    </div>
+
+                    {/* ─── Right: Retirement Form ─── */}
+                    <div className="lg:col-span-3">
+                        <Card className="border-emerald-900/20 bg-[#0a1210]/80">
                             <CardHeader>
-                                <CardTitle className="text-lg text-zinc-100">Retire Carbon Credits</CardTitle>
+                                <CardTitle className="text-zinc-100 text-lg">
+                                    Retirement Details
+                                </CardTitle>
                             </CardHeader>
-                            <CardContent className="space-y-5">
-                                <div className="space-y-2">
-                                    <Label className="text-zinc-300">Select Credit</Label>
-                                    <Select value={selectedToken} onValueChange={setSelectedToken}>
-                                        <SelectTrigger className="bg-[#060a08] border-emerald-900/30">
-                                            <SelectValue placeholder="Choose a credit to retire" />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-[#0a1210] border-emerald-900/30">
-                                            {ownedCredits.map((c) => (
-                                                <SelectItem key={c.tokenId} value={c.tokenId.toString()}>
-                                                    {c.projectName} ({c.balance} t)
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                            <CardContent className="space-y-4">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                        <Label className="text-zinc-400">
+                                            Amount to Retire *
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            min="1"
+                                            max={selectedCredit?.balance || 0}
+                                            value={retireAmount}
+                                            onChange={(e) =>
+                                                setRetireAmount(e.target.value)
+                                            }
+                                            className="bg-[#060a08] border-emerald-900/30"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-zinc-400">
+                                            Selected Credit
+                                        </Label>
+                                        <div className="flex h-10 items-center px-3 rounded-md bg-[#060a08] border border-emerald-900/30 text-sm text-zinc-400">
+                                            {selectedCredit
+                                                ? `#${selectedCredit.tokenId} — ${selectedCredit.projectName}`
+                                                : "None selected"}
+                                        </div>
+                                    </div>
                                 </div>
-
                                 <div className="space-y-2">
-                                    <Label className="text-zinc-300">Amount (tons CO₂)</Label>
-                                    <Input
-                                        type="number"
-                                        value={amount}
-                                        onChange={(e) => setAmount(e.target.value)}
-                                        placeholder="e.g. 100"
-                                        max={selectedCredit?.balance}
-                                        className="bg-[#060a08] border-emerald-900/30"
-                                    />
-                                    {selectedCredit && (
-                                        <p className="text-xs text-zinc-600">
-                                            Available: {selectedCredit.balance.toLocaleString()} tons
-                                        </p>
-                                    )}
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label className="text-zinc-300">Retiree Name / Organization</Label>
+                                    <Label className="text-zinc-400">
+                                        Retiree Name *
+                                    </Label>
                                     <Input
                                         value={retireeName}
-                                        onChange={(e) => setRetireeName(e.target.value)}
-                                        placeholder="e.g. Acme Corporation"
+                                        onChange={(e) =>
+                                            setRetireeName(e.target.value)
+                                        }
+                                        placeholder="Your name or organization"
                                         className="bg-[#060a08] border-emerald-900/30"
+                                        maxLength={200}
                                     />
                                 </div>
-
                                 <div className="space-y-2">
-                                    <Label className="text-zinc-300">Retirement Reason</Label>
+                                    <Label className="text-zinc-400">
+                                        Reason for Retirement
+                                    </Label>
                                     <Textarea
-                                        value={reason}
-                                        onChange={(e) => setReason(e.target.value)}
-                                        placeholder="e.g. Annual carbon neutrality commitment"
+                                        value={retireReason}
+                                        onChange={(e) =>
+                                            setRetireReason(e.target.value)
+                                        }
+                                        placeholder="e.g. Offsetting 2026 corporate emissions"
                                         className="bg-[#060a08] border-emerald-900/30 resize-none"
                                         rows={3}
+                                        maxLength={500}
                                     />
                                 </div>
 
                                 <Separator className="bg-emerald-900/20" />
 
+                                {/* Summary */}
+                                {selectedCredit && (
+                                    <div className="rounded-lg bg-[#060a08] border border-emerald-900/20 p-4 space-y-2">
+                                        <h4 className="text-sm font-medium text-zinc-300">
+                                            Retirement Summary
+                                        </h4>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-zinc-500">
+                                                Project
+                                            </span>
+                                            <span className="text-zinc-200">
+                                                {selectedCredit.projectName}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-zinc-500">
+                                                Amount
+                                            </span>
+                                            <span className="text-emerald-400 font-semibold">
+                                                {retireAmount} tons CO₂
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-zinc-500">
+                                                Retiree
+                                            </span>
+                                            <span className="text-zinc-200">
+                                                {retireeName || "—"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <Button
                                     onClick={handleRetire}
-                                    disabled={isTxPending || isGenerating}
-                                    className="w-full h-12 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-semibold"
+                                    disabled={
+                                        !selectedCredit ||
+                                        !retireeName.trim() ||
+                                        isTxPending ||
+                                        isGeneratingCert ||
+                                        !contractsReady
+                                    }
+                                    className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-semibold"
                                 >
-                                    {isTxPending ? (
+                                    {!contractsReady ? (
+                                        "Contracts Not Deployed"
+                                    ) : isTxPending ? (
                                         <>
                                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                            Confirming on chain...
+                                            Confirming on-chain...
                                         </>
-                                    ) : isGenerating ? (
+                                    ) : isGeneratingCert ? (
                                         <>
                                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                             Generating certificate...
                                         </>
                                     ) : (
                                         <>
-                                            <Flame className="h-4 w-4 mr-2" />
-                                            Retire & Burn Credits
+                                            <Send className="h-4 w-4 mr-2" />
+                                            Retire Credits
                                         </>
                                     )}
                                 </Button>
 
-                                {/* Certificate Download */}
-                                {certificate && (
-                                    <div className="flex items-center gap-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-4">
-                                        <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-emerald-400">Certificate Ready!</p>
-                                            <p className="text-xs text-zinc-500 truncate">TX: {txHash}</p>
+                                {/* Success State */}
+                                {isTxSuccess && txReceipt && (
+                                    <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-4">
+                                        <div className="flex items-center gap-2 text-emerald-400 mb-2">
+                                            <CheckCircle2 className="h-5 w-5" />
+                                            <span className="font-medium">
+                                                Credits Retired Successfully
+                                            </span>
                                         </div>
-                                        <a href={certificate} download={`ecochain-certificate-${txHash?.slice(0, 8)}.pdf`}>
-                                            <Button size="sm" variant="outline" className="border-emerald-500/30 text-emerald-400">
-                                                <Download className="h-4 w-4" />
-                                            </Button>
-                                        </a>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    {/* ─── Retirement History ─── */}
-                    <div className="lg:col-span-3">
-                        <Card className="border-emerald-900/20 bg-[#0a1210]/80">
-                            <CardHeader>
-                                <CardTitle className="text-lg text-zinc-100 flex items-center gap-2">
-                                    <FileText className="h-5 w-5 text-zinc-400" />
-                                    Retirement History
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                {retirementHistory.map((entry) => (
-                                    <div
-                                        key={entry.txHash}
-                                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg border border-emerald-900/20 bg-[#060a08]/60 p-4 hover:border-emerald-500/20 transition-colors"
-                                    >
-                                        <div className="flex items-start gap-3 min-w-0">
-                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 border border-orange-500/20">
-                                                <TreePine className="h-5 w-5 text-orange-400" />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <h4 className="font-medium text-zinc-200 text-sm">{entry.projectName}</h4>
-                                                <p className="text-xs text-zinc-500 mt-0.5">{entry.reason}</p>
-                                                <p className="text-xs text-zinc-600 mt-0.5 font-mono">{entry.txHash}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <div className="text-right">
-                                                <p className="text-sm font-bold text-orange-400">{entry.amount} t CO₂</p>
-                                                <p className="text-xs text-zinc-600">{entry.date}</p>
-                                            </div>
-                                            <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 border-0">
-                                                <Download className="h-3 w-3 mr-1" />
-                                                PDF
-                                            </Badge>
-                                        </div>
-                                    </div>
-                                ))}
-
-                                {retirementHistory.length === 0 && (
-                                    <div className="text-center py-12 text-zinc-600">
-                                        <Flame className="h-12 w-12 mx-auto mb-3 text-zinc-700" />
-                                        <p>No retirements yet. Retire credits to generate certificates.</p>
+                                        <p className="text-xs text-zinc-500 font-mono break-all">
+                                            Tx: {txReceipt.transactionHash}
+                                        </p>
                                     </div>
                                 )}
                             </CardContent>

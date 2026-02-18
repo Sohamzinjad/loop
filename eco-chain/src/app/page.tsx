@@ -1,45 +1,71 @@
 import Link from "next/link";
 import { ArrowRight, Shield, Zap, Globe, BarChart3, Leaf, TreePine, Factory, Wind } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const stats = [
-  { label: "Carbon Retired", value: "12,450+", suffix: "tons CO₂" },
-  { label: "Active Projects", value: "340+", suffix: "worldwide" },
-  { label: "Transactions", value: "$4.2M+", suffix: "volume" },
-  { label: "Companies", value: "89+", suffix: "onboarded" },
-];
+import { getGlobalStats } from "@/db/queries";
 
 const features = [
   {
     icon: Shield,
     title: "Verified Carbon Offsets",
-    description: "Every credit is verified through satellite imagery and IoT sensors before minting on-chain.",
+    description:
+      "Every credit is verified through satellite imagery and IoT sensors before minting on-chain.",
   },
   {
     icon: Zap,
     title: "Instant Settlement",
-    description: "Trade credits in real-time on Polygon. Sub-second finality with near-zero gas fees.",
+    description:
+      "Trade credits in real-time on Polygon. Sub-second finality with near-zero gas fees.",
   },
   {
     icon: Globe,
     title: "Global Impact Map",
-    description: "Track the real-world impact of every project with our interactive geospatial dashboard.",
+    description:
+      "Track the real-world impact of every project with our interactive geospatial dashboard.",
   },
   {
     icon: BarChart3,
     title: "Transparent Pricing",
-    description: "Market-driven pricing with full on-chain transparency. No hidden fees or intermediaries.",
+    description:
+      "Market-driven pricing with full on-chain transparency. No hidden fees or intermediaries.",
   },
 ];
 
 const projectTypes = [
-  { icon: TreePine, name: "Reforestation", projects: 124, color: "from-emerald-500 to-green-600" },
-  { icon: Wind, name: "Renewable Energy", projects: 89, color: "from-cyan-500 to-teal-600" },
-  { icon: Factory, name: "Industrial Capture", projects: 67, color: "from-violet-500 to-purple-600" },
-  { icon: Leaf, name: "Conservation", projects: 60, color: "from-lime-500 to-emerald-600" },
+  { icon: TreePine, name: "Reforestation", color: "from-emerald-500 to-green-600" },
+  { icon: Wind, name: "Renewable Energy", color: "from-cyan-500 to-teal-600" },
+  { icon: Factory, name: "Industrial Capture", color: "from-violet-500 to-purple-600" },
+  { icon: Leaf, name: "Conservation", color: "from-lime-500 to-emerald-600" },
 ];
 
-export default function HomePage() {
+export const revalidate = 60; // ISR: revalidate every 60 seconds
+
+export default async function HomePage() {
+  // Fetch real stats from database
+  const stats = await getGlobalStats();
+
+  const displayStats = [
+    {
+      label: "Carbon Retired",
+      value: stats.totalRetired > 0 ? stats.totalRetired.toLocaleString() : "0",
+      suffix: "tons CO₂",
+    },
+    {
+      label: "Active Projects",
+      value: stats.totalProjects > 0 ? stats.totalProjects.toLocaleString() : "0",
+      suffix: "worldwide",
+    },
+    {
+      label: "Transactions",
+      value: stats.totalTransactions > 0 ? stats.totalTransactions.toLocaleString() : "0",
+      suffix: "total",
+    },
+    {
+      label: "Credits Issued",
+      value: stats.totalCreditsIssued > 0 ? stats.totalCreditsIssued.toLocaleString() : "0",
+      suffix: "tons CO₂",
+    },
+  ];
+
   return (
     <div className="relative">
       {/* ─── Hero Section ─── */}
@@ -94,7 +120,7 @@ export default function HomePage() {
       <section className="relative border-y border-emerald-900/30 bg-[#0a0f0d]/80">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {stats.map((stat) => (
+            {displayStats.map((stat) => (
               <div key={stat.label} className="text-center">
                 <div className="text-3xl font-bold gradient-text">{stat.value}</div>
                 <div className="mt-1 text-sm text-zinc-500">{stat.suffix}</div>
@@ -113,7 +139,8 @@ export default function HomePage() {
               Built for <span className="gradient-text">Enterprise Impact</span>
             </h2>
             <p className="mt-4 text-zinc-500 max-w-2xl mx-auto">
-              Every feature designed to bring trust, speed, and transparency to the voluntary carbon market.
+              Every feature designed to bring trust, speed, and transparency to the
+              voluntary carbon market.
             </p>
           </div>
 
@@ -126,8 +153,12 @@ export default function HomePage() {
                 <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/10 to-green-600/10 border border-emerald-500/20 group-hover:border-emerald-500/40 transition-colors">
                   <feature.icon className="h-6 w-6 text-emerald-400" />
                 </div>
-                <h3 className="mb-2 text-lg font-semibold text-zinc-100">{feature.title}</h3>
-                <p className="text-sm text-zinc-500 leading-relaxed">{feature.description}</p>
+                <h3 className="mb-2 text-lg font-semibold text-zinc-100">
+                  {feature.title}
+                </h3>
+                <p className="text-sm text-zinc-500 leading-relaxed">
+                  {feature.description}
+                </p>
               </div>
             ))}
           </div>
@@ -150,11 +181,14 @@ export default function HomePage() {
             {projectTypes.map((type) => (
               <Link href="/marketplace" key={type.name}>
                 <div className="group relative overflow-hidden rounded-xl border border-emerald-900/20 bg-[#0a1210]/60 p-6 transition-all duration-300 hover:border-emerald-500/30 hover:translate-y-[-2px]">
-                  <div className={`mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br ${type.color} shadow-lg`}>
+                  <div
+                    className={`mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br ${type.color} shadow-lg`}
+                  >
                     <type.icon className="h-7 w-7 text-white" />
                   </div>
-                  <h3 className="text-lg font-semibold text-zinc-100 mb-1">{type.name}</h3>
-                  <p className="text-sm text-zinc-500">{type.projects} active projects</p>
+                  <h3 className="text-lg font-semibold text-zinc-100 mb-1">
+                    {type.name}
+                  </h3>
                 </div>
               </Link>
             ))}
@@ -170,7 +204,8 @@ export default function HomePage() {
             Ready to make an <span className="gradient-text">impact</span>?
           </h2>
           <p className="text-zinc-500 mb-8 max-w-xl mx-auto">
-            Connect your wallet, browse verified projects, and start building your carbon offset portfolio today.
+            Connect your wallet, browse verified projects, and start building your
+            carbon offset portfolio today.
           </p>
           <Link href="/marketplace">
             <Button

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { parseEther, formatEther } from "viem";
+import { parseEther } from "viem";
 import {
     ShoppingBag,
     Search,
@@ -15,6 +15,8 @@ import {
     Clock,
     MapPin,
     ArrowUpDown,
+    Loader2,
+    AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,93 +31,102 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { MARKETPLACE_ABI } from "@/lib/contracts";
-import { MARKETPLACE_ADDRESS } from "@/lib/wagmi";
+import { MARKETPLACE_ADDRESS, areContractsConfigured } from "@/lib/wagmi";
 
-// Mock marketplace data
-const mockListings = [
+// Type icons by project type
+const typeIcons: Record<string, typeof TreePine> = {
+    reforestation: TreePine,
+    conservation: Leaf,
+    renewable: Wind,
+    industrial: Factory,
+};
+
+interface MarketplaceListing {
+    tokenId: number;
+    availableSupply: string;
+    totalSupply: string;
+    pricePerTon: string;
+    projectName: string;
+    projectDescription: string | null;
+    metadata: {
+        location?: { lat: number; lng: number };
+        country?: string;
+        projectType?: string;
+        methodology?: string;
+        vintage?: string;
+    } | null;
+    verificationStatus: string;
+    ownerWallet: string;
+}
+
+const SAMPLE_LISTINGS: MarketplaceListing[] = [
     {
-        id: 0,
         tokenId: 1,
+        availableSupply: "420.0",
+        totalSupply: "1200.0",
+        pricePerTon: "2.40",
         projectName: "Amazon Rainforest Conservation",
-        seller: "0x742d35Cc6634C0532925a3b844Bc9e7595f1B1dC",
-        amount: 500,
-        pricePerUnit: "0.025",
-        type: "Conservation",
-        typeIcon: TreePine,
-        location: "Brazil",
-        vintage: "2025",
-        methodology: "VCS VM0015",
-        confidence: 94,
+        projectDescription: "Community-led avoided deforestation program.",
+        metadata: {
+            country: "Brazil",
+            projectType: "conservation",
+            methodology: "REDD+",
+            vintage: "2024",
+            location: { lat: -3.4653, lng: -62.2159 },
+        },
+        verificationStatus: "verified",
+        ownerWallet: "0x9a58a4a7b37e22f0f0f4f8b6a4d6a36bc7f2f123",
     },
     {
-        id: 1,
         tokenId: 2,
-        projectName: "Saharan Solar Farm Grid",
-        seller: "0x8ba1f109551bD432803012645Hc136E7D68eFb1d",
-        amount: 1200,
-        pricePerUnit: "0.018",
-        type: "Renewable Energy",
-        typeIcon: Wind,
-        location: "Morocco",
-        vintage: "2025",
-        methodology: "Gold Standard",
-        confidence: 97,
+        availableSupply: "310.0",
+        totalSupply: "900.0",
+        pricePerTon: "2.95",
+        projectName: "Borneo Reforestation",
+        projectDescription: "Native-species restoration with long-term monitoring.",
+        metadata: {
+            country: "Indonesia",
+            projectType: "reforestation",
+            methodology: "ARR",
+            vintage: "2023",
+            location: { lat: 1.8, lng: 109.95 },
+        },
+        verificationStatus: "verified",
+        ownerWallet: "0xb153d2b8cb0ec33fc910d210afcb9f4ca9c2e0d8",
     },
     {
-        id: 2,
         tokenId: 3,
-        projectName: "Nordic Direct Air Capture",
-        seller: "0x2546BcD3c84621e976D8185a91A922aE77ECEc30",
-        amount: 200,
-        pricePerUnit: "0.085",
-        type: "Industrial",
-        typeIcon: Factory,
-        location: "Iceland",
-        vintage: "2026",
-        methodology: "Puro Standard",
-        confidence: 99,
+        availableSupply: "680.0",
+        totalSupply: "1500.0",
+        pricePerTon: "1.85",
+        projectName: "Kenya Wind Corridor",
+        projectDescription: "Grid-scale wind generation replacing diesel demand.",
+        metadata: {
+            country: "Kenya",
+            projectType: "renewable",
+            methodology: "ACM0002",
+            vintage: "2025",
+            location: { lat: 2.2, lng: 37.9 },
+        },
+        verificationStatus: "verified",
+        ownerWallet: "0x4e6f43f11ccf1d97899ce12f39de9a615cb34e41",
     },
     {
-        id: 3,
         tokenId: 4,
-        projectName: "Borneo Mangrove Restoration",
-        seller: "0xbDA5747bFD65F08deb54cb465eB87D40e51B197E",
-        amount: 800,
-        pricePerUnit: "0.032",
-        type: "Reforestation",
-        typeIcon: TreePine,
-        location: "Indonesia",
-        vintage: "2025",
-        methodology: "VCS VM0033",
-        confidence: 91,
-    },
-    {
-        id: 4,
-        tokenId: 5,
-        projectName: "Patagonia Wind Energy",
-        seller: "0xdD2FD4581271e230360230F9337D5c90b1CDD67b",
-        amount: 950,
-        pricePerUnit: "0.021",
-        type: "Renewable Energy",
-        typeIcon: Wind,
-        location: "Argentina",
-        vintage: "2025",
-        methodology: "Gold Standard",
-        confidence: 96,
-    },
-    {
-        id: 5,
-        tokenId: 6,
-        projectName: "Congo Basin Forest Protection",
-        seller: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C11191",
-        amount: 1500,
-        pricePerUnit: "0.015",
-        type: "Conservation",
-        typeIcon: Leaf,
-        location: "DRC Congo",
-        vintage: "2024",
-        methodology: "VCS VM0009",
-        confidence: 88,
+        availableSupply: "220.0",
+        totalSupply: "700.0",
+        pricePerTon: "3.75",
+        projectName: "Nordic Carbon Capture Hub",
+        projectDescription: "Industrial capture and verified geological storage.",
+        metadata: {
+            country: "Norway",
+            projectType: "industrial",
+            methodology: "CCS",
+            vintage: "2025",
+            location: { lat: 60.47, lng: 8.46 },
+        },
+        verificationStatus: "verified",
+        ownerWallet: "0x0f2f42e8444fdc8f4f4d5ed3e69c2e4b4c2f8aa0",
     },
 ];
 
@@ -125,47 +136,82 @@ export default function MarketplacePage() {
     const [filterType, setFilterType] = useState("all");
     const [sortBy, setSortBy] = useState("price-low");
     const [buyAmounts, setBuyAmounts] = useState<Record<number, string>>({});
+    const [listings] = useState<MarketplaceListing[]>(SAMPLE_LISTINGS);
+    const [isLoading] = useState(false);
+
+    const contractsReady = areContractsConfigured();
 
     const { writeContract, data: txHash } = useWriteContract();
-    const { isLoading: isTxPending } = useWaitForTransactionReceipt({ hash: txHash });
+    const { isLoading: isTxPending } = useWaitForTransactionReceipt({
+        hash: txHash,
+    });
 
-    const filtered = mockListings
+    const filtered = listings
         .filter((l) => {
+            const projectType =
+                (l.metadata as Record<string, unknown>)?.projectType || "";
+            const country =
+                (l.metadata as Record<string, unknown>)?.country || "";
             const matchesSearch =
                 l.projectName.toLowerCase().includes(search.toLowerCase()) ||
-                l.location.toLowerCase().includes(search.toLowerCase());
-            const matchesType = filterType === "all" || l.type.toLowerCase().includes(filterType.toLowerCase());
+                String(country).toLowerCase().includes(search.toLowerCase());
+            const matchesType =
+                filterType === "all" ||
+                String(projectType)
+                    .toLowerCase()
+                    .includes(filterType.toLowerCase());
             return matchesSearch && matchesType;
         })
         .sort((a, b) => {
-            if (sortBy === "price-low") return parseFloat(a.pricePerUnit) - parseFloat(b.pricePerUnit);
-            if (sortBy === "price-high") return parseFloat(b.pricePerUnit) - parseFloat(a.pricePerUnit);
-            if (sortBy === "supply") return b.amount - a.amount;
+            if (sortBy === "price-low")
+                return parseFloat(a.pricePerTon) - parseFloat(b.pricePerTon);
+            if (sortBy === "price-high")
+                return parseFloat(b.pricePerTon) - parseFloat(a.pricePerTon);
+            if (sortBy === "supply")
+                return (
+                    parseFloat(b.availableSupply) - parseFloat(a.availableSupply)
+                );
             return 0;
         });
 
-    const handleBuy = (listing: (typeof mockListings)[0]) => {
-        const amount = parseInt(buyAmounts[listing.id] || "1");
-        if (!amount || amount <= 0 || amount > listing.amount) {
+    const handleBuy = (listing: MarketplaceListing) => {
+        if (!contractsReady) {
+            toast.error("Contracts not deployed yet");
+            return;
+        }
+
+        const amount = parseInt(buyAmounts[listing.tokenId] || "1");
+        if (
+            !amount ||
+            amount <= 0 ||
+            amount > parseFloat(listing.availableSupply)
+        ) {
             toast.error("Invalid amount");
             return;
         }
 
-        const totalPrice = parseEther(
-            (parseFloat(listing.pricePerUnit) * amount).toFixed(18)
-        );
+        // Use string math to avoid floating-point precision issues
+        const priceWei = parseEther(listing.pricePerTon);
+        const totalPrice = priceWei * BigInt(amount);
 
         writeContract(
             {
                 address: MARKETPLACE_ADDRESS,
                 abi: MARKETPLACE_ABI,
                 functionName: "buy",
-                args: [BigInt(listing.id), BigInt(amount)],
+                args: [BigInt(listing.tokenId), BigInt(amount)],
                 value: totalPrice,
             },
             {
                 onSuccess: () => {
-                    toast.success(`Purchased ${amount} credits from ${listing.projectName}!`);
+                    toast.success(
+                        `Purchased ${amount} credits from ${listing.projectName}!`
+                    );
+                    setBuyAmounts((prev) => {
+                        const updated = { ...prev };
+                        delete updated[listing.tokenId];
+                        return updated;
+                    });
                 },
                 onError: (error) => {
                     toast.error(error.message.slice(0, 100));
@@ -185,9 +231,14 @@ export default function MarketplacePage() {
                                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-green-600">
                                     <ShoppingBag className="h-5 w-5 text-white" />
                                 </div>
-                                <h1 className="text-2xl font-bold text-zinc-100">Marketplace</h1>
+                                <h1 className="text-2xl font-bold text-zinc-100">
+                                    Marketplace
+                                </h1>
                             </div>
-                            <p className="text-zinc-500 text-sm">Browse and purchase verified carbon credits from projects worldwide.</p>
+                            <p className="text-zinc-500 text-sm">
+                                Browse and purchase verified carbon credits from
+                                projects worldwide.
+                            </p>
                         </div>
 
                         {/* Filters */}
@@ -232,101 +283,150 @@ export default function MarketplacePage() {
 
             {/* ─── Listings Grid ─── */}
             <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-                <div className="mb-4 text-sm text-zinc-500">
-                    {filtered.length} project{filtered.length !== 1 ? "s" : ""} found
-                </div>
+                {isLoading ? (
+                    <div className="flex items-center justify-center py-20">
+                        <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+                    </div>
+                ) : filtered.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-zinc-500">
+                        <AlertCircle className="h-12 w-12 mb-4 text-zinc-600" />
+                        <p className="text-lg font-medium">No listings found</p>
+                        <p className="text-sm text-zinc-600 mt-1">
+                            {listings.length === 0
+                                ? "No verified projects are listed yet. Submit a project to get started."
+                                : "Try adjusting your search or filters."}
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="mb-4 text-sm text-zinc-500">
+                            {filtered.length} project
+                            {filtered.length !== 1 ? "s" : ""} found
+                        </div>
 
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                    {filtered.map((listing) => (
-                        <Card
-                            key={listing.id}
-                            className="group relative overflow-hidden border-emerald-900/20 bg-[#0a1210]/80 hover:border-emerald-500/30 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/5"
-                        >
-                            {/* Type Badge */}
-                            <div className="absolute top-4 right-4 z-10">
-                                <Badge
-                                    variant="secondary"
-                                    className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-xs"
-                                >
-                                    {listing.type}
-                                </Badge>
-                            </div>
+                        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                            {filtered.map((listing) => {
+                                const metadata = listing.metadata as Record<string, unknown> | null;
+                                const projectType = String(metadata?.projectType || "conservation");
+                                const country = String(metadata?.country || "Unknown");
+                                const methodology = String(metadata?.methodology || "");
+                                const vintage = String(metadata?.vintage || "");
+                                const Icon = typeIcons[projectType] || Leaf;
 
-                            {/* Gradient Banner */}
-                            <div className="h-2 bg-gradient-to-r from-emerald-500 to-green-600 opacity-60 group-hover:opacity-100 transition-opacity" />
-
-                            <CardHeader className="pb-3">
-                                <div className="flex items-start gap-3">
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                                        <listing.typeIcon className="h-5 w-5 text-emerald-400" />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <h3 className="font-semibold text-zinc-100 text-sm leading-tight truncate">
-                                            {listing.projectName}
-                                        </h3>
-                                        <div className="flex items-center gap-1 mt-1 text-xs text-zinc-500">
-                                            <MapPin className="h-3 w-3" />
-                                            {listing.location}
+                                return (
+                                    <Card
+                                        key={listing.tokenId}
+                                        className="group relative overflow-hidden border-emerald-900/20 bg-[#0a1210]/80 hover:border-emerald-500/30 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/5"
+                                    >
+                                        {/* Type Badge */}
+                                        <div className="absolute top-4 right-4 z-10">
+                                            <Badge
+                                                variant="secondary"
+                                                className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-xs"
+                                            >
+                                                {projectType}
+                                            </Badge>
                                         </div>
-                                    </div>
-                                </div>
-                            </CardHeader>
 
-                            <CardContent className="space-y-3 pb-3">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="rounded-lg bg-[#060a08] px-3 py-2">
-                                        <div className="text-xs text-zinc-600">Price/ton</div>
-                                        <div className="text-sm font-semibold text-emerald-400">
-                                            {listing.pricePerUnit} MATIC
-                                        </div>
-                                    </div>
-                                    <div className="rounded-lg bg-[#060a08] px-3 py-2">
-                                        <div className="text-xs text-zinc-600">Available</div>
-                                        <div className="text-sm font-semibold text-zinc-200">
-                                            {listing.amount.toLocaleString()} t
-                                        </div>
-                                    </div>
-                                </div>
+                                        {/* Gradient Banner */}
+                                        <div className="h-2 bg-gradient-to-r from-emerald-500 to-green-600 opacity-60 group-hover:opacity-100 transition-opacity" />
 
-                                <div className="flex items-center justify-between text-xs text-zinc-500">
-                                    <div className="flex items-center gap-1">
-                                        <Clock className="h-3 w-3" />
-                                        Vintage {listing.vintage}
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <TrendingUp className="h-3 w-3" />
-                                        {listing.confidence}% verified
-                                    </div>
-                                </div>
+                                        <CardHeader className="pb-3">
+                                            <div className="flex items-start gap-3">
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                                    <Icon className="h-5 w-5 text-emerald-400" />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h3 className="font-semibold text-zinc-100 text-sm leading-tight truncate">
+                                                        {listing.projectName}
+                                                    </h3>
+                                                    <div className="flex items-center gap-1 mt-1 text-xs text-zinc-500">
+                                                        <MapPin className="h-3 w-3" />
+                                                        {country}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </CardHeader>
 
-                                <div className="text-xs text-zinc-600 truncate">
-                                    {listing.methodology}
-                                </div>
-                            </CardContent>
+                                        <CardContent className="space-y-3 pb-3">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="rounded-lg bg-[#060a08] px-3 py-2">
+                                                    <div className="text-xs text-zinc-600">
+                                                        Price/ton
+                                                    </div>
+                                                    <div className="text-sm font-semibold text-emerald-400">
+                                                        {listing.pricePerTon} MATIC
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-lg bg-[#060a08] px-3 py-2">
+                                                    <div className="text-xs text-zinc-600">
+                                                        Available
+                                                    </div>
+                                                    <div className="text-sm font-semibold text-zinc-200">
+                                                        {parseFloat(listing.availableSupply).toLocaleString()} t
+                                                    </div>
+                                                </div>
+                                            </div>
 
-                            <CardFooter className="flex gap-2 border-t border-emerald-900/20 pt-4">
-                                <Input
-                                    type="number"
-                                    min="1"
-                                    max={listing.amount}
-                                    placeholder="Qty"
-                                    value={buyAmounts[listing.id] || ""}
-                                    onChange={(e) =>
-                                        setBuyAmounts({ ...buyAmounts, [listing.id]: e.target.value })
-                                    }
-                                    className="w-24 bg-[#060a08] border-emerald-900/30 text-sm"
-                                />
-                                <Button
-                                    className="flex-1 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-medium text-sm"
-                                    disabled={!isConnected || isTxPending}
-                                    onClick={() => handleBuy(listing)}
-                                >
-                                    {!isConnected ? "Connect Wallet" : isTxPending ? "Pending..." : "Buy Credits"}
-                                </Button>
-                            </CardFooter>
-                        </Card>
-                    ))}
-                </div>
+                                            <div className="flex items-center justify-between text-xs text-zinc-500">
+                                                {vintage && (
+                                                    <div className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" />
+                                                        Vintage {vintage}
+                                                    </div>
+                                                )}
+                                                <div className="flex items-center gap-1">
+                                                    <TrendingUp className="h-3 w-3" />
+                                                    Verified
+                                                </div>
+                                            </div>
+
+                                            {methodology && (
+                                                <div className="text-xs text-zinc-600 truncate">
+                                                    {methodology}
+                                                </div>
+                                            )}
+                                        </CardContent>
+
+                                        <CardFooter className="flex gap-2 border-t border-emerald-900/20 pt-4">
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                max={parseFloat(listing.availableSupply)}
+                                                placeholder="Qty"
+                                                value={buyAmounts[listing.tokenId] || ""}
+                                                onChange={(e) =>
+                                                    setBuyAmounts({
+                                                        ...buyAmounts,
+                                                        [listing.tokenId]: e.target.value,
+                                                    })
+                                                }
+                                                className="w-24 bg-[#060a08] border-emerald-900/30 text-sm"
+                                            />
+                                            <Button
+                                                className="flex-1 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-medium text-sm"
+                                                disabled={
+                                                    !isConnected ||
+                                                    isTxPending ||
+                                                    !contractsReady
+                                                }
+                                                onClick={() => handleBuy(listing)}
+                                            >
+                                                {!isConnected
+                                                    ? "Connect Wallet"
+                                                    : !contractsReady
+                                                        ? "Contracts Not Deployed"
+                                                        : isTxPending
+                                                            ? "Pending..."
+                                                            : "Buy Credits"}
+                                            </Button>
+                                        </CardFooter>
+                                    </Card>
+                                );
+                            })}
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

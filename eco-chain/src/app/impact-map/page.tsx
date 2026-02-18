@@ -1,253 +1,219 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { useState } from "react";
-import { MapPin, TreePine, Wind, Factory, Leaf, Info } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Globe, MapPin, CheckCircle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 
 // Dynamic import for Leaflet (SSR-incompatible)
 const MapContainer = dynamic(
-    () => import("react-leaflet").then((mod) => mod.MapContainer),
+    () => import("react-leaflet").then((m) => m.MapContainer),
     { ssr: false }
 );
 const TileLayer = dynamic(
-    () => import("react-leaflet").then((mod) => mod.TileLayer),
+    () => import("react-leaflet").then((m) => m.TileLayer),
     { ssr: false }
 );
-const MarkerComponent = dynamic(
-    () => import("react-leaflet").then((mod) => mod.Marker),
+const CircleMarker = dynamic(
+    () => import("react-leaflet").then((m) => m.CircleMarker),
     { ssr: false }
 );
 const Popup = dynamic(
-    () => import("react-leaflet").then((mod) => mod.Popup),
+    () => import("react-leaflet").then((m) => m.Popup),
     { ssr: false }
 );
 
-// Mock project locations
-const projectLocations = [
+interface ProjectLocation {
+    id: number;
+    name: string;
+    lat: number;
+    lng: number;
+    country: string;
+    projectType: string;
+    status: string;
+}
+
+// Fallback demo data when DB is empty
+const DEMO_PROJECTS: ProjectLocation[] = [
     {
         id: 1,
         name: "Amazon Rainforest Conservation",
         lat: -3.4653,
         lng: -62.2159,
-        type: "Conservation",
-        icon: Leaf,
-        credits: 8500,
-        retired: 2100,
         country: "Brazil",
+        projectType: "Conservation",
+        status: "verified",
     },
     {
         id: 2,
-        name: "Saharan Solar Farm Grid",
-        lat: 31.7917,
-        lng: -7.0926,
-        type: "Renewable Energy",
-        icon: Wind,
-        credits: 12000,
-        retired: 4500,
-        country: "Morocco",
+        name: "Borneo Reforestation",
+        lat: 1.8,
+        lng: 109.95,
+        country: "Indonesia",
+        projectType: "Reforestation",
+        status: "verified",
     },
     {
         id: 3,
-        name: "Nordic Direct Air Capture",
-        lat: 64.1466,
-        lng: -21.9426,
-        type: "Industrial",
-        icon: Factory,
-        credits: 3200,
-        retired: 800,
-        country: "Iceland",
+        name: "Sahara Solar Farm",
+        lat: 30.0,
+        lng: 2.0,
+        country: "Algeria",
+        projectType: "Renewable Energy",
+        status: "verified",
     },
     {
         id: 4,
-        name: "Borneo Mangrove Restoration",
-        lat: 1.6,
-        lng: 110.3,
-        type: "Reforestation",
-        icon: TreePine,
-        credits: 6400,
-        retired: 1900,
-        country: "Indonesia",
+        name: "Kenya Wind Corridor",
+        lat: 2.2,
+        lng: 37.9,
+        country: "Kenya",
+        projectType: "Renewable Energy",
+        status: "verified",
     },
     {
         id: 5,
-        name: "Patagonia Wind Energy",
-        lat: -46.5,
-        lng: -71.5,
-        type: "Renewable Energy",
-        icon: Wind,
-        credits: 9500,
-        retired: 3200,
-        country: "Argentina",
-    },
-    {
-        id: 6,
-        name: "Congo Basin Forest Protection",
-        lat: -0.2,
-        lng: 21.4,
-        type: "Conservation",
-        icon: Leaf,
-        credits: 15000,
-        retired: 5800,
-        country: "DRC Congo",
-    },
-    {
-        id: 7,
-        name: "Mumbai Urban Green Corridor",
-        lat: 19.076,
-        lng: 72.8777,
-        type: "Urban Greening",
-        icon: TreePine,
-        credits: 500,
-        retired: 0,
-        country: "India",
+        name: "Nordic Carbon Capture Hub",
+        lat: 60.47,
+        lng: 8.46,
+        country: "Norway",
+        projectType: "Industrial Capture",
+        status: "verified",
     },
 ];
 
-const typeColors: Record<string, string> = {
-    Conservation: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    "Renewable Energy": "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-    Industrial: "bg-violet-500/10 text-violet-400 border-violet-500/20",
-    Reforestation: "bg-lime-500/10 text-lime-400 border-lime-500/20",
-    "Urban Greening": "bg-amber-500/10 text-amber-400 border-amber-500/20",
-};
-
 export default function ImpactMapPage() {
-    const [selectedProject, setSelectedProject] = useState<(typeof projectLocations)[0] | null>(null);
-    const [isClient, setIsClient] = useState(false);
+    const [selectedProject, setSelectedProject] = useState<ProjectLocation | null>(null);
+    const isClient = typeof window !== "undefined";
 
-    // Check if we're on the client
-    useState(() => {
-        setIsClient(true);
-    });
-
-    const totalCredits = projectLocations.reduce((a, p) => a + p.credits, 0);
-    const totalRetired = projectLocations.reduce((a, p) => a + p.retired, 0);
+    // Use demo data for now — will be replaced with DB fetch
+    const projectLocations = useMemo<ProjectLocation[]>(() => DEMO_PROJECTS, []);
 
     return (
         <div className="min-h-screen bg-grid">
-            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-                {/* ─── Header ─── */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-                    <div>
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600">
-                                <MapPin className="h-5 w-5 text-white" />
-                            </div>
-                            <h1 className="text-2xl font-bold text-zinc-100">Impact Map</h1>
+            {/* ─── Header ─── */}
+            <div className="border-b border-emerald-900/20 bg-[#0a0f0d]/60">
+                <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-teal-600">
+                            <Globe className="h-5 w-5 text-white" />
                         </div>
-                        <p className="text-sm text-zinc-500">Explore verified carbon offset projects around the world.</p>
-                    </div>
-                    <div className="flex gap-4">
-                        <div className="text-right">
-                            <p className="text-xs text-zinc-500">Total Issued</p>
-                            <p className="text-lg font-bold gradient-text">{totalCredits.toLocaleString()} t</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-xs text-zinc-500">Total Retired</p>
-                            <p className="text-lg font-bold text-orange-400">{totalRetired.toLocaleString()} t</p>
+                        <div>
+                            <h1 className="text-2xl font-bold text-zinc-100">
+                                Impact Map
+                            </h1>
+                            <p className="text-sm text-zinc-500">
+                                Explore verified carbon offset projects around the world
+                            </p>
                         </div>
                     </div>
                 </div>
+            </div>
 
+            <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
                 <div className="grid gap-6 lg:grid-cols-4">
-                    {/* ─── Map ─── */}
-                    <div className="lg:col-span-3">
-                        <Card className="border-emerald-900/20 bg-[#0a1210]/80 overflow-hidden">
-                            <CardContent className="p-0">
-                                <div className="h-[600px] w-full relative">
-                                    {isClient && (
-                                        <link
-                                            rel="stylesheet"
-                                            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-                                        />
-                                    )}
-                                    {isClient ? (
-                                        <MapContainer
-                                            center={[20, 0]}
-                                            zoom={2}
-                                            style={{ height: "100%", width: "100%", background: "#0a1210" }}
-                                            scrollWheelZoom={true}
-                                        >
-                                            <TileLayer
-                                                attribution='&copy; <a href="https://carto.com">CARTO</a>'
-                                                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                                            />
-                                            {projectLocations.map((project) => (
-                                                <MarkerComponent
-                                                    key={project.id}
-                                                    position={[project.lat, project.lng]}
-                                                    eventHandlers={{
-                                                        click: () => setSelectedProject(project),
-                                                    }}
-                                                >
-                                                    <Popup>
-                                                        <div className="text-sm">
-                                                            <strong>{project.name}</strong>
-                                                            <br />
-                                                            {project.country} • {project.credits.toLocaleString()} tons
-                                                        </div>
-                                                    </Popup>
-                                                </MarkerComponent>
-                                            ))}
-                                        </MapContainer>
-                                    ) : (
-                                        <div className="flex items-center justify-center h-full text-zinc-500">
-                                            <p>Loading map...</p>
+                    {/* ─── Sidebar: Project List ─── */}
+                    <div className="lg:col-span-1 space-y-3 max-h-[600px] overflow-y-auto pr-2 scrollbar-thin">
+                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+                            {projectLocations.length} Projects
+                        </p>
+
+                        {projectLocations.map((project) => (
+                            <Card
+                                key={project.id}
+                                className={`cursor-pointer border transition-all duration-200 ${selectedProject?.id === project.id
+                                        ? "border-emerald-500/50 bg-emerald-500/5"
+                                        : "border-emerald-900/20 bg-[#0a1210]/80 hover:border-emerald-500/30"
+                                    }`}
+                                onClick={() => setSelectedProject(project)}
+                            >
+                                <CardContent className="p-4">
+                                    <div className="flex items-start justify-between">
+                                        <div className="min-w-0">
+                                            <h3 className="text-sm font-medium text-zinc-100 truncate">
+                                                {project.name}
+                                            </h3>
+                                            <div className="flex items-center gap-1 mt-1 text-xs text-zinc-500">
+                                                <MapPin className="h-3 w-3 shrink-0" />
+                                                {project.country}
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
+                                        <Badge
+                                            variant="secondary"
+                                            className="shrink-0 text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                        >
+                                            {project.projectType}
+                                        </Badge>
+                                    </div>
+                                    <div className="flex items-center gap-1 mt-2 text-xs text-emerald-500">
+                                        <CheckCircle className="h-3 w-3" />
+                                        Verified
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
                     </div>
 
-                    {/* ─── Sidebar ─── */}
-                    <div className="space-y-4">
-                        <Card className="border-emerald-900/20 bg-[#0a1210]/80">
-                            <CardHeader className="pb-3">
-                                <CardTitle className="text-sm text-zinc-400 flex items-center gap-2">
-                                    <Info className="h-4 w-4" />
-                                    Projects ({projectLocations.length})
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-2 max-h-[500px] overflow-y-auto">
-                                {projectLocations.map((project) => {
-                                    const isSelected = selectedProject?.id === project.id;
-                                    const Icon = project.icon;
-                                    return (
-                                        <button
+                    {/* ─── Map ─── */}
+                    <div className="lg:col-span-3 rounded-xl overflow-hidden border border-emerald-900/20 bg-[#0a1210]">
+                        {!isClient ? (
+                            <div className="h-[600px] flex items-center justify-center">
+                                <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+                            </div>
+                        ) : (
+                            <>
+                                {/* Load Leaflet CSS */}
+                                <link
+                                    rel="stylesheet"
+                                    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+                                    crossOrigin=""
+                                />
+                                <MapContainer
+                                    center={[20, 0]}
+                                    zoom={2}
+                                    scrollWheelZoom={true}
+                                    style={{ height: "600px", width: "100%" }}
+                                    className="z-0"
+                                >
+                                    <TileLayer
+                                        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                                        attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                                    />
+                                    {projectLocations.map((project) => (
+                                        <CircleMarker
                                             key={project.id}
-                                            onClick={() => setSelectedProject(project)}
-                                            className={`w-full text-left rounded-lg border px-3 py-3 transition-all duration-200 ${isSelected
-                                                    ? "border-emerald-500/40 bg-emerald-500/10"
-                                                    : "border-emerald-900/20 bg-[#060a08]/60 hover:border-emerald-500/20"
-                                                }`}
+                                            center={[project.lat, project.lng]}
+                                            radius={8}
+                                            pathOptions={{
+                                                fillColor:
+                                                    selectedProject?.id === project.id
+                                                        ? "#10b981"
+                                                        : "#34d399",
+                                                fillOpacity:
+                                                    selectedProject?.id === project.id
+                                                        ? 0.9
+                                                        : 0.6,
+                                                color: "#064e3b",
+                                                weight: 2,
+                                            }}
+                                            eventHandlers={{
+                                                click: () =>
+                                                    setSelectedProject(project),
+                                            }}
                                         >
-                                            <div className="flex items-start gap-2">
-                                                <Icon className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
-                                                <div className="min-w-0">
-                                                    <p className="text-sm font-medium text-zinc-200 truncate">{project.name}</p>
-                                                    <div className="flex items-center gap-2 mt-1">
-                                                        <span className="text-xs text-zinc-500">{project.country}</span>
-                                                        <Badge
-                                                            variant="secondary"
-                                                            className={`text-[10px] px-1.5 py-0 ${typeColors[project.type] || ""}`}
-                                                        >
-                                                            {project.type}
-                                                        </Badge>
-                                                    </div>
-                                                    <div className="flex items-center gap-3 mt-1.5 text-xs">
-                                                        <span className="text-emerald-400">{project.credits.toLocaleString()} t</span>
-                                                        <span className="text-orange-400">{project.retired.toLocaleString()} retired</span>
-                                                    </div>
+                                            <Popup>
+                                                <div className="text-sm">
+                                                    <strong>{project.name}</strong>
+                                                    <br />
+                                                    {project.country} — {project.projectType}
                                                 </div>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </CardContent>
-                        </Card>
+                                            </Popup>
+                                        </CircleMarker>
+                                    ))}
+                                </MapContainer>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
