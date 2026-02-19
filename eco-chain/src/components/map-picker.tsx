@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type L from "leaflet";
 import { MapPin } from "lucide-react";
+import { useTheme } from "next-themes";
 
 interface MapPickerProps {
     lat?: number;
@@ -19,8 +20,11 @@ export default function MapPicker({ lat, lng, onSelect }: MapPickerProps) {
     const mapRef = useRef<HTMLDivElement>(null);
     const leafletMapRef = useRef<L.Map | null>(null);
     const markerRef = useRef<L.Marker | null>(null);
+    const tileLayerRef = useRef<L.TileLayer | null>(null);
     const leafletLibRef = useRef<typeof L | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
+    const { resolvedTheme } = useTheme();
+    const isDark = resolvedTheme !== "light";
 
     useEffect(() => {
         if (!mapRef.current || leafletMapRef.current) return;
@@ -66,10 +70,12 @@ export default function MapPicker({ lat, lng, onSelect }: MapPickerProps) {
                 attributionControl: false,
             });
 
-            L.tileLayer(
-                "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-                { maxZoom: 18 }
-            ).addTo(map);
+            const tileLayerUrl = isDark
+                ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+
+            tileLayerRef.current = L.tileLayer(tileLayerUrl, { maxZoom: 18 });
+            tileLayerRef.current.addTo(map);
 
             // Add marker if coords exist
             if (hasInitialCoords) {
@@ -112,11 +118,12 @@ export default function MapPicker({ lat, lng, onSelect }: MapPickerProps) {
                 leafletMapRef.current.remove();
                 leafletMapRef.current = null;
                 markerRef.current = null;
+                tileLayerRef.current = null;
             }
             setIsLoaded(false);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [isDark]);
 
     // Update marker when lat/lng props change externally
     useEffect(() => {
@@ -154,6 +161,24 @@ export default function MapPicker({ lat, lng, onSelect }: MapPickerProps) {
         }
     }, [lat, lng, isLoaded]);
 
+    useEffect(() => {
+        if (!leafletMapRef.current || !leafletLibRef.current) return;
+
+        if (tileLayerRef.current) {
+            tileLayerRef.current.remove();
+            tileLayerRef.current = null;
+        }
+
+        const tileLayerUrl = isDark
+            ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+
+        tileLayerRef.current = leafletLibRef.current.tileLayer(tileLayerUrl, {
+            maxZoom: 18,
+        });
+        tileLayerRef.current.addTo(leafletMapRef.current);
+    }, [isDark]);
+
     return (
         <div className="relative">
             {/* Leaflet CSS */}
@@ -165,13 +190,13 @@ export default function MapPicker({ lat, lng, onSelect }: MapPickerProps) {
 
             <div
                 ref={mapRef}
-                className="h-48 w-full rounded-lg border border-emerald-900/30 z-0"
-                style={{ background: "#060a08" }}
+                className="h-48 w-full rounded-lg border border-border/70 z-0"
+                style={{ background: "var(--background)" }}
             />
 
             {!isLoaded && (
-                <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-[#060a08]/80">
-                    <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/80">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <MapPin className="h-4 w-4 animate-pulse" />
                         Loading map...
                     </div>

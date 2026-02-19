@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { parseEther } from "viem";
 import {
     ShoppingBag,
@@ -17,6 +18,7 @@ import {
     ArrowUpDown,
     Loader2,
     AlertCircle,
+    Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -174,7 +176,49 @@ export default function MarketplacePage() {
             return 0;
         });
 
+    const marketStats = [
+        {
+            label: "Live Listings",
+            value: filtered.length.toLocaleString(),
+        },
+        {
+            label: "Available Supply",
+            value: `${Math.round(
+                filtered.reduce(
+                    (sum, listing) => sum + parseFloat(listing.availableSupply),
+                    0
+                )
+            ).toLocaleString()} tCO2`,
+        },
+        {
+            label: "Avg Price",
+            value: filtered.length
+                ? `${(
+                    filtered.reduce(
+                        (sum, listing) => sum + parseFloat(listing.pricePerTon),
+                        0
+                    ) / filtered.length
+                ).toFixed(2)} MATIC`
+                : "--",
+        },
+        {
+            label: "Countries",
+            value: new Set(
+                filtered.map((listing) =>
+                    String((listing.metadata as Record<string, unknown>)?.country || "Unknown")
+                )
+            ).size.toString(),
+        },
+    ];
+
+    const { openConnectModal } = useConnectModal();
+
     const handleBuy = (listing: MarketplaceListing) => {
+        if (!isConnected) {
+            openConnectModal?.();
+            return;
+        }
+
         if (!contractsReady) {
             toast.error("Contracts not deployed yet");
             return;
@@ -222,60 +266,93 @@ export default function MarketplacePage() {
 
     return (
         <div className="min-h-screen bg-grid">
-            {/* ─── Header ─── */}
-            <div className="border-b border-emerald-900/20 bg-[#0a0f0d]/60">
+            <div className="border-b border-border/70 bg-card/60 backdrop-blur-xl">
                 <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-                    <div className="flex flex-col gap-6">
-                        <div>
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-green-600">
-                                    <ShoppingBag className="h-5 w-5 text-white" />
+                    <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
+                        <div className="space-y-6">
+                            <div>
+                                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border/80 bg-background/60 px-3 py-1 text-xs text-primary">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    Dynamic pricing and instant settlement
                                 </div>
-                                <h1 className="text-2xl font-bold text-zinc-100">
-                                    Marketplace
-                                </h1>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-surge-orange to-surge-orange-dark">
+                                        <ShoppingBag className="h-5 w-5 text-white" />
+                                    </div>
+                                    <h1 className="text-3xl font-bold text-foreground">
+                                        Marketplace
+                                    </h1>
+                                </div>
+                                <p className="text-muted-foreground">
+                                    Browse and purchase verified carbon credits from projects worldwide.
+                                </p>
                             </div>
-                            <p className="text-zinc-500 text-sm">
-                                Browse and purchase verified carbon credits from
-                                projects worldwide.
-                            </p>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                                {["all", "conservation", "reforestation", "renewable", "industrial"].map((type) => (
+                                    <Button
+                                        key={type}
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`rounded-full border ${filterType === type
+                                            ? "border-primary/40 bg-primary/12 text-primary"
+                                            : "border-border/60 bg-background/55 text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            }`}
+                                        onClick={() => setFilterType(type)}
+                                    >
+                                        {type === "all"
+                                            ? "All types"
+                                            : type.charAt(0).toUpperCase() + type.slice(1)}
+                                    </Button>
+                                ))}
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Search projects or countries..."
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                        className="h-10 pl-10 bg-background/70 border-border focus-visible:border-primary/60"
+                                    />
+                                </div>
+                                <Select value={filterType} onValueChange={setFilterType}>
+                                    <SelectTrigger className="w-full sm:w-48 bg-background/70 border-border">
+                                        <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+                                        <SelectValue placeholder="Category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Types</SelectItem>
+                                        <SelectItem value="conservation">Conservation</SelectItem>
+                                        <SelectItem value="reforestation">Reforestation</SelectItem>
+                                        <SelectItem value="renewable">Renewable Energy</SelectItem>
+                                        <SelectItem value="industrial">Industrial</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Select value={sortBy} onValueChange={setSortBy}>
+                                    <SelectTrigger className="w-full sm:w-48 bg-background/70 border-border">
+                                        <ArrowUpDown className="h-4 w-4 mr-2 text-muted-foreground" />
+                                        <SelectValue placeholder="Sort by" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="price-low">Price: Low to High</SelectItem>
+                                        <SelectItem value="price-high">Price: High to Low</SelectItem>
+                                        <SelectItem value="supply">Largest Supply</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
 
-                        {/* Filters */}
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            <div className="relative flex-1">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-                                <Input
-                                    placeholder="Search projects, locations..."
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    className="pl-10 bg-[#0a1210] border-emerald-900/30 focus:border-emerald-500/50 text-zinc-200 placeholder:text-zinc-600"
-                                />
-                            </div>
-                            <Select value={filterType} onValueChange={setFilterType}>
-                                <SelectTrigger className="w-full sm:w-48 bg-[#0a1210] border-emerald-900/30">
-                                    <Filter className="h-4 w-4 mr-2 text-zinc-500" />
-                                    <SelectValue placeholder="Category" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-[#0a1210] border-emerald-900/30">
-                                    <SelectItem value="all">All Types</SelectItem>
-                                    <SelectItem value="conservation">Conservation</SelectItem>
-                                    <SelectItem value="reforestation">Reforestation</SelectItem>
-                                    <SelectItem value="renewable">Renewable Energy</SelectItem>
-                                    <SelectItem value="industrial">Industrial</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <Select value={sortBy} onValueChange={setSortBy}>
-                                <SelectTrigger className="w-full sm:w-48 bg-[#0a1210] border-emerald-900/30">
-                                    <ArrowUpDown className="h-4 w-4 mr-2 text-zinc-500" />
-                                    <SelectValue placeholder="Sort by" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-[#0a1210] border-emerald-900/30">
-                                    <SelectItem value="price-low">Price: Low → High</SelectItem>
-                                    <SelectItem value="price-high">Price: High → Low</SelectItem>
-                                    <SelectItem value="supply">Largest Supply</SelectItem>
-                                </SelectContent>
-                            </Select>
+                        <div className="grid grid-cols-2 gap-3">
+                            {marketStats.map((stat) => (
+                                <div key={stat.label} className="eco-surface eco-ring-hover rounded-2xl p-4">
+                                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+                                    <p className="mt-1 text-lg font-semibold text-foreground">
+                                        {stat.value}
+                                    </p>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -285,13 +362,13 @@ export default function MarketplacePage() {
             <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
                 {isLoading ? (
                     <div className="flex items-center justify-center py-20">
-                        <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
                 ) : filtered.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-zinc-500">
-                        <AlertCircle className="h-12 w-12 mb-4 text-zinc-600" />
+                    <div className="eco-surface rounded-2xl flex flex-col items-center justify-center py-20 text-muted-foreground">
+                        <AlertCircle className="h-12 w-12 mb-4 text-muted-foreground/70" />
                         <p className="text-lg font-medium">No listings found</p>
-                        <p className="text-sm text-zinc-600 mt-1">
+                        <p className="text-sm text-muted-foreground/85 mt-1">
                             {listings.length === 0
                                 ? "No verified projects are listed yet. Submit a project to get started."
                                 : "Try adjusting your search or filters."}
@@ -299,7 +376,7 @@ export default function MarketplacePage() {
                     </div>
                 ) : (
                     <>
-                        <div className="mb-4 text-sm text-zinc-500">
+                        <div className="mb-4 text-sm text-muted-foreground">
                             {filtered.length} project
                             {filtered.length !== 1 ? "s" : ""} found
                         </div>
@@ -316,31 +393,28 @@ export default function MarketplacePage() {
                                 return (
                                     <Card
                                         key={listing.tokenId}
-                                        className="group relative overflow-hidden border-emerald-900/20 bg-[#0a1210]/80 hover:border-emerald-500/30 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/5"
+                                        className="group eco-surface eco-ring-hover relative overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-0.5"
                                     >
-                                        {/* Type Badge */}
                                         <div className="absolute top-4 right-4 z-10">
                                             <Badge
                                                 variant="secondary"
-                                                className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-xs"
+                                                className="border-primary/25 bg-primary/10 text-primary text-xs"
                                             >
                                                 {projectType}
                                             </Badge>
                                         </div>
 
-                                        {/* Gradient Banner */}
-                                        <div className="h-2 bg-gradient-to-r from-emerald-500 to-green-600 opacity-60 group-hover:opacity-100 transition-opacity" />
 
                                         <CardHeader className="pb-3">
                                             <div className="flex items-start gap-3">
-                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                                                    <Icon className="h-5 w-5 text-emerald-400" />
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
+                                                    <Icon className="h-5 w-5 text-primary" />
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <h3 className="font-semibold text-zinc-100 text-sm leading-tight truncate">
+                                                    <h3 className="font-semibold text-foreground text-sm leading-tight truncate">
                                                         {listing.projectName}
                                                     </h3>
-                                                    <div className="flex items-center gap-1 mt-1 text-xs text-zinc-500">
+                                                    <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                                                         <MapPin className="h-3 w-3" />
                                                         {country}
                                                     </div>
@@ -350,25 +424,42 @@ export default function MarketplacePage() {
 
                                         <CardContent className="space-y-3 pb-3">
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="rounded-lg bg-[#060a08] px-3 py-2">
-                                                    <div className="text-xs text-zinc-600">
+                                                <div className="rounded-lg bg-background/70 border border-border/70 px-3 py-2">
+                                                    <div className="text-xs text-muted-foreground">
                                                         Price/ton
                                                     </div>
-                                                    <div className="text-sm font-semibold text-emerald-400">
+                                                    <div className="text-sm font-semibold text-primary">
                                                         {listing.pricePerTon} MATIC
                                                     </div>
                                                 </div>
-                                                <div className="rounded-lg bg-[#060a08] px-3 py-2">
-                                                    <div className="text-xs text-zinc-600">
+                                                <div className="rounded-lg bg-background/70 border border-border/70 px-3 py-2">
+                                                    <div className="text-xs text-muted-foreground">
                                                         Available
                                                     </div>
-                                                    <div className="text-sm font-semibold text-zinc-200">
+                                                    <div className="text-sm font-semibold text-foreground">
                                                         {parseFloat(listing.availableSupply).toLocaleString()} t
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center justify-between text-xs text-zinc-500">
+                                            <div className="h-2 rounded-full bg-muted">
+                                                <div
+                                                    className="h-full rounded-full bg-gradient-to-r from-surge-orange to-surge-orange-dark"
+                                                    style={{
+                                                        width: `${Math.max(
+                                                            8,
+                                                            Math.min(
+                                                                100,
+                                                                (parseFloat(listing.availableSupply) /
+                                                                    parseFloat(listing.totalSupply || "1")) *
+                                                                100
+                                                            )
+                                                        )}%`,
+                                                    }}
+                                                />
+                                            </div>
+
+                                            <div className="flex items-center justify-between text-xs text-muted-foreground">
                                                 {vintage && (
                                                     <div className="flex items-center gap-1">
                                                         <Clock className="h-3 w-3" />
@@ -382,13 +473,13 @@ export default function MarketplacePage() {
                                             </div>
 
                                             {methodology && (
-                                                <div className="text-xs text-zinc-600 truncate">
+                                                <div className="text-xs text-muted-foreground/80 truncate">
                                                     {methodology}
                                                 </div>
                                             )}
                                         </CardContent>
 
-                                        <CardFooter className="flex gap-2 border-t border-emerald-900/20 pt-4">
+                                        <CardFooter className="flex gap-2 border-t border-border/70 pt-4">
                                             <Input
                                                 type="number"
                                                 min="1"
@@ -401,14 +492,13 @@ export default function MarketplacePage() {
                                                         [listing.tokenId]: e.target.value,
                                                     })
                                                 }
-                                                className="w-24 bg-[#060a08] border-emerald-900/30 text-sm"
+                                                className="w-24 bg-background/70 border-border text-sm"
                                             />
                                             <Button
-                                                className="flex-1 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-medium text-sm"
+                                                className="flex-1 bg-gradient-to-r from-surge-orange to-surge-orange-dark text-white font-medium text-sm transition-transform hover:scale-[1.01] hover:from-surge-orange-dark hover:to-surge-orange-dark"
                                                 disabled={
-                                                    !isConnected ||
                                                     isTxPending ||
-                                                    !contractsReady
+                                                    (isConnected && !contractsReady)
                                                 }
                                                 onClick={() => handleBuy(listing)}
                                             >

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import Navbar from "@/components/navbar";
@@ -9,6 +9,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+});
+const spaceMono = Space_Mono({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-space-mono",
 });
 
 export const metadata: Metadata = {
@@ -24,19 +29,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased bg-[#060a08] text-zinc-100 min-h-screen`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.variable} ${spaceMono.variable} bg-background text-foreground font-sans antialiased min-h-screen`}>
         <Providers>
           <TooltipProvider>
             <Navbar />
             <main className="pt-16">{children}</main>
             <Toaster
-              theme="dark"
+              theme="system"
+              richColors
+              closeButton
+              position="top-right"
               toastOptions={{
                 style: {
-                  background: "#0a1a10",
-                  border: "1px solid rgba(34, 197, 94, 0.2)",
-                  color: "#e4e4e7",
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  color: "var(--foreground)",
+                  backdropFilter: "blur(14px)",
                 },
               }}
             />

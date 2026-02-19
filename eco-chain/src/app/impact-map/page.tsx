@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Globe, MapPin, CheckCircle, Loader2 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -85,25 +86,32 @@ const DEMO_PROJECTS: ProjectLocation[] = [
 
 export default function ImpactMapPage() {
     const [selectedProject, setSelectedProject] = useState<ProjectLocation | null>(null);
-    const isClient = typeof window !== "undefined";
+    const [mounted, setMounted] = useState(false);
+    const { resolvedTheme } = useTheme();
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    const isClient = typeof window !== "undefined" && mounted;
+    const isDark = (resolvedTheme ?? "light") !== "light";
 
     // Use demo data for now — will be replaced with DB fetch
     const projectLocations = useMemo<ProjectLocation[]>(() => DEMO_PROJECTS, []);
 
     return (
         <div className="min-h-screen bg-grid">
-            {/* ─── Header ─── */}
-            <div className="border-b border-emerald-900/20 bg-[#0a0f0d]/60">
+            <div className="border-b border-border/70 bg-card/60 backdrop-blur-xl">
                 <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
                     <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-teal-600">
                             <Globe className="h-5 w-5 text-white" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-bold text-zinc-100">
+                            <h1 className="text-2xl font-bold text-foreground">
                                 Impact Map
                             </h1>
-                            <p className="text-sm text-zinc-500">
+                            <p className="text-sm text-muted-foreground">
                                 Explore verified carbon offset projects around the world
                             </p>
                         </div>
@@ -115,7 +123,7 @@ export default function ImpactMapPage() {
                 <div className="grid gap-6 lg:grid-cols-4">
                     {/* ─── Sidebar: Project List ─── */}
                     <div className="lg:col-span-1 space-y-3 max-h-[600px] overflow-y-auto pr-2 scrollbar-thin">
-                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
                             {projectLocations.length} Projects
                         </p>
 
@@ -123,30 +131,30 @@ export default function ImpactMapPage() {
                             <Card
                                 key={project.id}
                                 className={`cursor-pointer border transition-all duration-200 ${selectedProject?.id === project.id
-                                        ? "border-emerald-500/50 bg-emerald-500/5"
-                                        : "border-emerald-900/20 bg-[#0a1210]/80 hover:border-emerald-500/30"
+                                    ? "border-primary/50 bg-primary/8"
+                                    : "eco-surface border-border/70 hover:border-primary/40"
                                     }`}
                                 onClick={() => setSelectedProject(project)}
                             >
                                 <CardContent className="p-4">
                                     <div className="flex items-start justify-between">
                                         <div className="min-w-0">
-                                            <h3 className="text-sm font-medium text-zinc-100 truncate">
+                                            <h3 className="text-sm font-medium text-foreground truncate">
                                                 {project.name}
                                             </h3>
-                                            <div className="flex items-center gap-1 mt-1 text-xs text-zinc-500">
+                                            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                                                 <MapPin className="h-3 w-3 shrink-0" />
                                                 {project.country}
                                             </div>
                                         </div>
                                         <Badge
                                             variant="secondary"
-                                            className="shrink-0 text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                            className="shrink-0 text-[10px] bg-primary/10 text-primary border-primary/25"
                                         >
                                             {project.projectType}
                                         </Badge>
                                     </div>
-                                    <div className="flex items-center gap-1 mt-2 text-xs text-emerald-500">
+                                    <div className="flex items-center gap-1 mt-2 text-xs text-surge-orange">
                                         <CheckCircle className="h-3 w-3" />
                                         Verified
                                     </div>
@@ -155,11 +163,10 @@ export default function ImpactMapPage() {
                         ))}
                     </div>
 
-                    {/* ─── Map ─── */}
-                    <div className="lg:col-span-3 rounded-xl overflow-hidden border border-emerald-900/20 bg-[#0a1210]">
+                    <div className="lg:col-span-3 rounded-xl overflow-hidden border border-border/70 bg-card/80">
                         {!isClient ? (
                             <div className="h-[600px] flex items-center justify-center">
-                                <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
                             </div>
                         ) : (
                             <>
@@ -177,8 +184,8 @@ export default function ImpactMapPage() {
                                     className="z-0"
                                 >
                                     <TileLayer
-                                        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                                        attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                                        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+                                        attribution="Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012"
                                     />
                                     {projectLocations.map((project) => (
                                         <CircleMarker
@@ -188,13 +195,13 @@ export default function ImpactMapPage() {
                                             pathOptions={{
                                                 fillColor:
                                                     selectedProject?.id === project.id
-                                                        ? "#10b981"
-                                                        : "#34d399",
+                                                        ? "#e07850"
+                                                        : "#f29f79",
                                                 fillOpacity:
                                                     selectedProject?.id === project.id
                                                         ? 0.9
                                                         : 0.6,
-                                                color: "#064e3b",
+                                                color: "#8d4a31",
                                                 weight: 2,
                                             }}
                                             eventHandlers={{
