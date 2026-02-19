@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 320" fill="none">
+  <style>
+    .card { rx: 16; ry: 16; fill: #fff; stroke-width: 2; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.08)); }
+    .title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; font-weight: 700; fill: #1a1a2e; text-anchor: middle; }
+    .subtitle { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 11px; fill: #6b7280; text-anchor: middle; }
+    .step { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 11px; font-weight: 600; text-anchor: middle; }
+    .arrow { stroke: #d1d5db; stroke-width: 2.5; stroke-linecap: round; }
+    .arrow-head { fill: #d1d5db; }
+    .heading { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 22px; font-weight: 800; fill: #111827; text-anchor: middle; }
+    .heading-sub { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; fill: #9ca3af; text-anchor: middle; }
+  </style>
+
+  <!-- Heading -->
+  <text x="500" y="35" class="heading">EcoChain Workflow</text>
+  <text x="500" y="55" class="heading-sub">Carbon Credit Lifecycle — Register · List · Buy · Retire</text>
+
+  <!-- ═══ Step 1: Register ═══ -->
+  <rect x="30" y="80" width="200" height="220" class="card" stroke="#10b981"/>
+  <!-- Icon circle -->
+  <circle cx="130" cy="140" r="32" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <!-- Document icon -->
+  <g transform="translate(130,140)" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-10,-14 h12 l8,8 v18 a2,2 0 0 1 -2,2 h-18 a2,2 0 0 1 -2,-2 v-24 a2,2 0 0 1 2,-2z"/>
+    <polyline points="2,-14 2,-6 10,-6"/>
+    <line x1="-6" y1="-2" x2="6" y2="-2"/>
+    <line x1="-6" y1="4" x2="6" y2="4"/>
+    <line x1="-6" y1="10" x2="2" y2="10"/>
+  </g>
+  <text x="130" y="196" class="step" fill="#10b981">STEP 1</text>
+  <text x="130" y="218" class="title">Register</text>
+  <text x="130" y="236" class="title">Project</text>
+  <text x="130" y="260" class="subtitle">Verify &amp; store</text>
+  <text x="130" y="275" class="subtitle">on-chain</text>
+
+  <!-- Arrow 1→2 -->
+  <line x1="238" y1="190" x2="270" y2="190" class="arrow"/>
+  <polygon points="270,185 280,190 270,195" class="arrow-head"/>
+
+  <!-- ═══ Step 2: List ═══ -->
+  <rect x="285" y="80" width="200" height="220" class="card" stroke="#3b82f6"/>
+  <circle cx="385" cy="140" r="32" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <!-- Store icon -->
+  <g transform="translate(385,140)" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-12,-12 h24 l4,10 h-32z"/>
+    <line x1="-12" y1="-2" x2="-12" y2="14"/>
+    <line x1="12" y1="-2" x2="12" y2="14"/>
+    <line x1="-12" y1="14" x2="12" y2="14"/>
+    <rect x="-4" y="4" width="8" height="10"/>
+  </g>
+  <text x="385" y="196" class="step" fill="#3b82f6">STEP 2</text>
+  <text x="385" y="218" class="title">List on</text>
+  <text x="385" y="236" class="title">Marketplace</text>
+  <text x="385" y="260" class="subtitle">Set price</text>
+  <text x="385" y="275" class="subtitle">&amp; amount</text>
+
+  <!-- Arrow 2→3 -->
+  <line x1="493" y1="190" x2="525" y2="190" class="arrow"/>
+  <polygon points="525,185 535,190 525,195" class="arrow-head"/>
+
+  <!-- ═══ Step 3: Buy ═══ -->
+  <rect x="540" y="80" width="200" height="220" class="card" stroke="#e07850"/>
+  <circle cx="640" cy="140" r="32" fill="#fff7ed" stroke="#e07850" stroke-width="1.5"/>
+  <!-- Wallet icon -->
+  <g transform="translate(640,140)" fill="none" stroke="#e07850" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="-14" y="-10" width="28" height="22" rx="3"/>
+    <path d="M-14,-6 l14,-8 l14,8"/>
+    <circle cx="8" cy="2" r="2" fill="#e07850"/>
+  </g>
+  <text x="640" y="196" class="step" fill="#e07850">STEP 3</text>
+  <text x="640" y="218" class="title">Buy</text>
+  <text x="640" y="236" class="title">Credits</text>
+  <text x="640" y="260" class="subtitle">Pay MATIC,</text>
+  <text x="640" y="275" class="subtitle">receive NFT</text>
+
+  <!-- Arrow 3→4 -->
+  <line x1="748" y1="190" x2="780" y2="190" class="arrow"/>
+  <polygon points="780,185 790,190 780,195" class="arrow-head"/>
+
+  <!-- ═══ Step 4: Retire ═══ -->
+  <rect x="795" y="80" width="200" height="220" class="card" stroke="#ef4444"/>
+  <circle cx="895" cy="140" r="32" fill="#fef2f2" stroke="#ef4444" stroke-width="1.5"/>
+  <!-- Flame icon -->
+  <g transform="translate(895,140)" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0,-14 c0,0 6,6 6,12 a8,8 0 0 1 -12,0 c0,-6 6,-12 6,-12z" fill="#fecaca"/>
+    <path d="M0,-4 c0,0 3,4 3,7 a4,4 0 0 1 -6,0 c0,-3 3,-7 3,-7z" fill="#ef4444"/>
+  </g>
+  <text x="895" y="196" class="step" fill="#ef4444">STEP 4</text>
+  <text x="895" y="218" class="title">Retire &amp;</text>
+  <text x="895" y="236" class="title">Certificate</text>
+  <text x="895" y="260" class="subtitle">Burn NFT,</text>
+  <text x="895" y="275" class="subtitle">get certificate</text>
+</svg>
