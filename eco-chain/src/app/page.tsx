@@ -73,28 +73,30 @@ export default async function HomePage() {
         <div className="absolute bottom-1/4 right-1/4 h-[400px] w-[400px] rounded-full bg-surge-orange/10 blur-[100px] animate-float-delayed" />
 
         <div className="relative z-10 mx-auto max-w-6xl px-4 text-center">
-          <div className="animate-shimmer mb-8 inline-flex items-center gap-2 rounded-full border border-border/80 bg-card/80 px-4 py-1.5 text-sm text-primary backdrop-blur-xl">
-            <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-            Live on Polygon Amoy Testnet
+          <div className="animate-fade-in-up block">
+            <div className="animate-shimmer mb-8 inline-flex items-center gap-2 rounded-full border border-border/80 bg-card/80 px-4 py-1.5 text-sm text-primary backdrop-blur-xl shadow-sm">
+              <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+              Live on Polygon Amoy Testnet
+            </div>
           </div>
 
-          <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
+          <h1 className="animate-fade-in-up delay-100 mb-6 text-5xl font-bold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
             <span className="text-foreground">The Future of</span>
             <br />
             <span className="gradient-text">Carbon Markets</span>
           </h1>
 
-          <p className="mx-auto mb-10 max-w-2xl text-lg text-muted-foreground leading-relaxed">
+          <p className="animate-fade-in-up delay-200 mx-auto mb-10 max-w-2xl text-lg text-muted-foreground leading-relaxed">
             Tokenize verified carbon offsets as ERC-1155 assets. Trade on a transparent,
             permissionless marketplace. Retire credits and generate immutable certificates
             of impact.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="animate-fade-in-up delay-300 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link href="/marketplace">
               <Button
                 size="lg"
-                className="h-12 px-8 bg-gradient-to-r from-surge-orange to-surge-orange-dark text-white font-semibold shadow-lg shadow-surge-orange/20 transition-all duration-300 hover:-translate-y-0.5 hover:from-surge-orange-dark hover:to-surge-orange-dark hover:shadow-surge-orange/40"
+                className="h-12 px-8 bg-gradient-to-r from-surge-orange to-surge-orange-dark text-white font-semibold shadow-lg shadow-surge-orange/20 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98] hover:from-surge-orange-dark hover:to-surge-orange-dark hover:shadow-surge-orange/40"
               >
                 Explore Marketplace
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -104,7 +106,7 @@ export default async function HomePage() {
               <Button
                 size="lg"
                 variant="outline"
-                className="h-12 px-8 border-border text-foreground hover:bg-accent hover:border-primary/40 transition-all duration-300"
+                className="h-12 px-8 border-border text-foreground hover:bg-accent hover:border-primary/40 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98] shadow-sm hover:shadow-md"
               >
                 Submit a Project
               </Button>
@@ -115,10 +117,10 @@ export default async function HomePage() {
 
       <section className="relative border-y border-border/70 bg-card/55 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {displayStats.map((stat) => (
-              <div key={stat.label} className="eco-surface eco-ring-hover rounded-2xl p-5 text-center">
-                <div className="text-3xl font-bold gradient-text">{stat.value}</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in-up delay-400">
+            {displayStats.map((stat, i) => (
+              <div key={stat.label} className="eco-surface eco-ring-hover rounded-2xl p-5 text-center group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
+                <div className="text-3xl font-bold gradient-text transition-transform duration-300 group-hover:scale-105">{stat.value}</div>
                 <div className="mt-1 text-sm text-muted-foreground">{stat.suffix}</div>
                 <div className="mt-0.5 text-xs text-muted-foreground/80">{stat.label}</div>
               </div>
@@ -143,9 +145,9 @@ export default async function HomePage() {
             {features.map((feature) => (
               <div
                 key={feature.title}
-                className="eco-surface eco-ring-hover group relative rounded-2xl p-6"
+                className="eco-surface eco-ring-hover group relative rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
               >
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-primary/20 bg-gradient-to-br from-primary/15 to-surge-orange/10 transition-colors group-hover:border-primary/45">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-primary/20 bg-gradient-to-br from-primary/15 to-surge-orange/10 transition-all duration-300 group-hover:border-primary/45 group-hover:scale-110 group-hover:shadow-[0_0_20px_rgba(224,120,80,0.2)]">
                   <feature.icon className="h-6 w-6 text-primary" />
                 </div>
                 <h3 className="mb-2 text-lg font-semibold text-foreground">
@@ -174,9 +176,9 @@ export default async function HomePage() {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {projectTypes.map((type) => (
               <Link href="/marketplace" key={type.name}>
-                <div className="eco-surface eco-ring-hover group relative overflow-hidden rounded-2xl p-6 hover:-translate-y-1">
+                <div className="eco-surface eco-ring-hover group relative overflow-hidden rounded-2xl p-6 transition-all duration-300 hover:-translate-y-2 hover:shadow-xl cursor-pointer">
                   <div
-                    className={`mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br ${type.color} shadow-lg`}
+                    className={`mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br ${type.color} shadow-lg transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}
                   >
                     <type.icon className="h-7 w-7 text-white" />
                   </div>
@@ -204,10 +206,10 @@ export default async function HomePage() {
           <Link href="/marketplace">
             <Button
               size="lg"
-              className="h-12 px-10 bg-gradient-to-r from-surge-orange to-surge-orange-dark text-white font-semibold shadow-lg shadow-surge-orange/20 transition-all duration-300 hover:-translate-y-0.5 hover:from-surge-orange-dark hover:to-surge-orange-dark hover:shadow-surge-orange/40"
+              className="h-12 px-10 bg-gradient-to-r from-surge-orange to-surge-orange-dark text-white font-semibold shadow-lg shadow-surge-orange/20 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98] hover:from-surge-orange-dark hover:to-surge-orange-dark hover:shadow-surge-orange/40"
             >
               Get Started
-              <ArrowRight className="ml-2 h-4 w-4" />
+              <ArrowRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
             </Button>
           </Link>
         </div>
