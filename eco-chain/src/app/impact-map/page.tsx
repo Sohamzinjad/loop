@@ -20,10 +20,20 @@ const CircleMarker = dynamic(
     () => import("react-leaflet").then((m) => m.CircleMarker),
     { ssr: false }
 );
+const Marker = dynamic(
+    () => import("react-leaflet").then((m) => m.Marker),
+    { ssr: false }
+);
 const Popup = dynamic(
     () => import("react-leaflet").then((m) => m.Popup),
     { ssr: false }
 );
+
+// We need to import leafet types dynamically or use a type assertion to create custom icons
+let L: any;
+if (typeof window !== "undefined") {
+    L = require("leaflet");
+}
 
 interface ProjectLocation {
     id: number;
@@ -99,6 +109,22 @@ export default function ImpactMapPage() {
     // Use demo data for now — will be replaced with DB fetch
     const projectLocations = useMemo<ProjectLocation[]>(() => DEMO_PROJECTS, []);
 
+    // Create custom pulsating icon function
+    const createCustomIcon = (isSelected: boolean) => {
+        if (!isClient) return undefined;
+        return L.divIcon({
+            className: "bg-transparent",
+            html: `
+                <div class="relative flex h-6 w-6 items-center justify-center">
+                    <span class="absolute inline-flex h-full w-full rounded-full bg-surge-orange/50 ${isSelected ? 'animate-pulse' : 'animate-ping opacity-75'}"></span>
+                    <span class="relative inline-flex h-3 w-3 rounded-full bg-surge-orange-dark shadow-[0_0_8px_rgba(224,120,80,0.8)] border border-white/50"></span>
+                </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+        });
+    };
+
     return (
         <div className="min-h-screen bg-grid">
             <div className="border-b border-border/70 bg-card/60 backdrop-blur-xl">
@@ -127,13 +153,14 @@ export default function ImpactMapPage() {
                             {projectLocations.length} Projects
                         </p>
 
-                        {projectLocations.map((project) => (
+                        {projectLocations.map((project, index) => (
                             <Card
                                 key={project.id}
-                                className={`cursor-pointer border transition-all duration-200 ${selectedProject?.id === project.id
-                                    ? "border-primary/50 bg-primary/8"
-                                    : "eco-surface border-border/70 hover:border-primary/40"
+                                className={`cursor-pointer border transition-all duration-300 transform eco-ring-hover hover:-translate-y-1 animate-fade-in-up ${selectedProject?.id === project.id
+                                    ? "border-primary/50 bg-primary/10 shadow-[0_0_15px_rgba(224,120,80,0.15)] scale-[1.02]"
+                                    : "eco-surface border-border/70 hover:border-primary/40 hover:shadow-md"
                                     }`}
+                                style={{ animationDelay: `${index * 100}ms` }}
                                 onClick={() => setSelectedProject(project)}
                             >
                                 <CardContent className="p-4">
@@ -165,11 +192,11 @@ export default function ImpactMapPage() {
 
                     <div className="lg:col-span-3 rounded-xl overflow-hidden border border-border/70 bg-card/80">
                         {!isClient ? (
-                            <div className="h-[600px] flex items-center justify-center">
+                            <div className="h-[600px] flex items-center justify-center eco-surface rounded-xl">
                                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                             </div>
                         ) : (
-                            <>
+                            <div className="animate-fade-in-up delay-300 rounded-xl overflow-hidden h-full">
                                 {/* Load Leaflet CSS */}
                                 <link
                                     rel="stylesheet"
@@ -178,48 +205,39 @@ export default function ImpactMapPage() {
                                 />
                                 <MapContainer
                                     center={[20, 0]}
-                                    zoom={2}
+                                    zoom={3}
                                     scrollWheelZoom={true}
-                                    style={{ height: "600px", width: "100%" }}
+                                    style={{ height: "600px", width: "100%", background: isDark ? "#1a1a1a" : "#faf7f5" }}
                                     className="z-0"
                                 >
                                     <TileLayer
-                                        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
-                                        attribution="Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012"
+                                        url={
+                                            isDark
+                                                ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                                                : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                                        }
+                                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                                     />
                                     {projectLocations.map((project) => (
-                                        <CircleMarker
+                                        <Marker
                                             key={project.id}
-                                            center={[project.lat, project.lng]}
-                                            radius={8}
-                                            pathOptions={{
-                                                fillColor:
-                                                    selectedProject?.id === project.id
-                                                        ? "#e07850"
-                                                        : "#f29f79",
-                                                fillOpacity:
-                                                    selectedProject?.id === project.id
-                                                        ? 0.9
-                                                        : 0.6,
-                                                color: "#8d4a31",
-                                                weight: 2,
-                                            }}
+                                            position={[project.lat, project.lng]}
+                                            icon={createCustomIcon(selectedProject?.id === project.id)}
                                             eventHandlers={{
                                                 click: () =>
                                                     setSelectedProject(project),
                                             }}
                                         >
-                                            <Popup>
-                                                <div className="text-sm">
-                                                    <strong>{project.name}</strong>
-                                                    <br />
-                                                    {project.country} — {project.projectType}
+                                            <Popup className="custom-popup">
+                                                <div className="text-sm rounded-lg p-1">
+                                                    <strong className="text-surge-orange-dark block mb-1">{project.name}</strong>
+                                                    <div className="text-muted-foreground text-xs font-mono">{project.country} — {project.projectType}</div>
                                                 </div>
                                             </Popup>
-                                        </CircleMarker>
+                                        </Marker>
                                     ))}
                                 </MapContainer>
-                            </>
+                            </div>
                         )}
                     </div>
                 </div>
